@@ -16,7 +16,7 @@
  * Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#define VERSION "1.0.0"
+#define VERSION "1.0.2"
 #define BUFLEN 8192
 #define MAX_CONNECTION 32
 //#define CS_BUFFER_LEN 2
