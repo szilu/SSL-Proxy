@@ -57,7 +57,7 @@ options.
 				initialization.
 Defaults:
     # ssl_proxy -s 443 -c localhost:80 -m 32 -C /etc/symbion/cert.pem \
-	    -L /etc/symbion/key.pem
+	    -K /etc/symbion/key.pem
 
 Notes
 =====
