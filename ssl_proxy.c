@@ -324,7 +324,7 @@ void sighandler(int signum) {
 	    log(LOG_NOTICE, "signal", "Interrupt/terminate");
 	    server_done();
 	    // If it's possible to remove pid file, try it..
-	    // It's not guaranteed to succeed, because of setreuid
+	    // It's not guaranteed to succeed, because of setuid
 	    if (!chroot_dir) unlink("/var/run/ssl_proxy.pid");
 	    exit(0);
 	default:
@@ -416,8 +416,8 @@ int main(int argc, char **argv) {
     }
     if (set_uid) {
 	debug("Changing real and effective userID to %.256s..", set_uid);
-	setreuid(pass->pw_uid, pass->pw_uid);
-	setregid(pass->pw_gid, pass->pw_gid);
+	setuid(pass->pw_uid, pass->pw_uid);
+	setgid(pass->pw_gid, pass->pw_gid);
     }
 
     conn=malloc(max_conn*sizeof(Conn));
