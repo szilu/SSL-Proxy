@@ -1,0 +1,96 @@
+General information
+===================
+
+The Symbion SSL Proxy is a network server application. It listens on a TCP
+port, accepts SSL connections, and forwards them to an other (local or remote)
+TCP port.
+It is NOT a HTTPS server itself, but it can act as a HTTPS server, if you run
+an SSL Proxy server on port 443 which forwards the connections to port 80.
+SSL Proxy is tested with HTTP, but it should work with any SSL protocols, I
+think.
+
+Security
+========
+SSL Proxy was developed with security in mind. When it allocated the server
+TCP port and loaded everything from the filesystem, it chroot()s to a
+(possibly empty) directory and changes the process's real and effective user
+id to a specified user.
+
+Install
+=======
+Make sure you have installed OpenSSL, than run make in the main directory.
+Copy ssl_proxy to anywhere you want :)
+
+Key generation
+==============
+SSL Proxy can not generate keys, use ssleay's req utility to do it:
+	# mkdir /etc/symbion; cd /etc/symbion
+	# ssleay req -nodes -new -x509 -out cert.pem -keyout key.pem
+	# chmod go-rwx key.pem
+
+Usage
+=====
+SSL Proxy does not has a config file, it simply has some command line
+options.
+    General options:
+	-h			Usage information.
+	-d			Turn on debugging. SSL Proxy will not go into
+				the background and it will print a lot of
+				debug information to stderr.
+	-s <server port>	Specify the port, which SSL Proxy will listen
+				on.
+	-c [<client host>:]<client port>
+				Specify the TCP port, which SSL Proxy will
+				connect to as a client (The forwarding port).
+	-m <max connection>	SSL Proxy will accept maximum this number of
+				connections.
+    SSL options:
+	-C <certificate file>	SSL Public Certificate file (see Key generation).
+	-K <key file>		SSL Private Key File (see Key generation).
+    Security options:
+	-u <user/uid>		Change real and effective UID to this after
+				initialization.
+	-r <chroot dir>		Chroot to the specified directory after
+				initialization.
+Defaults:
+    # ssl_proxy -s 443 -c localhost:80 -m 32 -C /etc/symbion/cert.pem \
+	    -L /etc/symbion/key.pem
+
+Examples
+========
+If you are running a HTTP server at port 80 which does not has SSL support,
+and you want it to work on SSL too, than defaults are good for you:
+	# ssl_proxy
+If you would like to use maximal security level, you can use:
+	# mkdir /etc/symbion/chroot_dir
+	# ssl_proxy -u nobody -r /etc/symbion/chroot_dir
+
+How to report bugs
+==================
+To report a bug, send mail to szilu@revai.hu.
+In the mail include:
+
+* The version
+
+* Information about your system. For instance:
+
+    - What operating system and version
+    - What version of OpenSSL
+    - What version of the C library
+
+  And anything else you think is relevant.
+
+* How to reproduce the bug. 
+
+* The text that was printed out (Debug information).
+
+Patches
+=======
+
+Patches can be sent to Szilu <szilu@revai.hu>.
+Please include your name and email address.
+
+If the patch fixes a bug, it is usually a good idea to include
+all the information described in "How to Report Bugs".
+
+    Szilard Hajba <szilu@revai.hu>
