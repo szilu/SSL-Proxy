@@ -1,3 +1,7 @@
+2003-09-23 19:49:45    Szilard Hajba <szilu@symbion.hu>
+
+	* Listen on multiple interfaces (patch by Marco Lanzotti)
+
 2001-11-05 03:26:26    Szilard Hajba <szilu@revai.hu>
 
 	* UNIX domain socket used Linux specific headers, now it compiles on

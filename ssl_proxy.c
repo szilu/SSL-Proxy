@@ -40,6 +40,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <pwd.h>
+#include <arpa/inet.h>
 
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -51,6 +52,7 @@
 int debug_flag=0;
 int max_conn=MAX_CONNECTION;
 int cs_buflen=CS_BUFFER_LEN, sc_buflen=SC_BUFFER_LEN;
+char *server_addr="0.0.0.0";
 int server_port=443;
 char *client_addr="localhost";
 int client_port=80;
@@ -111,8 +113,9 @@ void log(int level, const char *cls, const char *format,...) {
 }
 
 // ============================================== Server
-int server_init(int port, int maxconn) {
+int server_init(char *addr, int port, int maxconn) {
     struct sockaddr_in server;
+    long ipaddr;
 
     server_socket=socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket<0) {
@@ -120,7 +123,9 @@ int server_init(int port, int maxconn) {
 	exit(1);
     }
     server.sin_family=AF_INET;
-    server.sin_addr.s_addr=htons(INADDR_ANY);
+    inet_pton(AF_INET, addr, &ipaddr);
+    server.sin_addr.s_addr=ipaddr;
+//    server.sin_addr.s_addr=htons(INADDR_ANY);
     server.sin_port=htons(port);
     if (bind(server_socket, (struct sockaddr *)&server, sizeof(server)) < 0) {
 	perror("bind()");
@@ -131,7 +136,7 @@ int server_init(int port, int maxconn) {
     return server_socket;
 }
 
-void server_done() {
+void server_done(void) {
     int ci;
     shutdown(server_socket, 2);
     usleep(100);
@@ -153,7 +158,7 @@ static RSA *tmp_rsa_cb(SSL *ssl, int export, int key_len) {
     return rsa;
 }
 
-void server_ssl_init(char *cert, char *key) {
+void server_ssl_init(void) {
     FILE *f;
     SSLeay_add_ssl_algorithms();
     SSL_load_error_strings();
@@ -228,7 +233,7 @@ void client_init(char *addr, int port) {
 // ============================================== Connection
 struct sockaddr_in server_sa;
 unsigned int server_sa_len;
-int conn_accept() {
+int conn_accept(void) {
     int i;
     // Initialize SSL connection (server side)
     int s=accept(server_socket, (struct sockaddr *)&server_sa, &server_sa_len);
@@ -340,9 +345,10 @@ int main(int argc, char **argv) {
 	switch (c) {
 	    case 'h':
 		fprintf(stderr, "Symbion SSL proxy " VERSION "\n"
-			"usage: %.256s [-d] [-s <listen port>] [-c <client address>]\n"
+			"usage: %.256s [-d] [-s <listen address>] [-c <client address>]\n"
 			"              [-m <max connection>] [-C <certificate file>] [-K <key file>]\n"
 			"              [-u <user/uid>] [-r <chroot dir>]\n"
+			"        <lister address> = [<host>:]<port>\n"
 			"        <client address> = [<host>:]<port> | unix:<path>\n", argv[0]);
 		fprintf(stderr, "       %.256s -h\n", argv[0]);
 		exit(0);
@@ -354,6 +360,14 @@ int main(int argc, char **argv) {
 		break;
 	    case 's':
 		server_port=atoi(optarg);
+		p1=strtok(optarg, ":");
+		p2=strtok(NULL, "");
+		if (p2) {
+		    server_addr=p1;
+		    server_port=atoi(p2);
+		} else {
+		    server_addr="0.0.0.0"; server_port=atoi(p1);
+		}
 		break;
 	    case 'c':
 		p1=strtok(optarg, ":");
@@ -393,8 +407,8 @@ int main(int argc, char **argv) {
 	debug("Using server: family=INET host=%.256s port=%d", client_addr, client_port);
     else
 	debug("Using server: family=UNIX path=%.256s", client_addr);
-    server_init(server_port, max_conn);
-    server_ssl_init(cert_file, key_file);
+    server_init(server_addr, server_port, max_conn);
+    server_ssl_init();
     client_init(client_addr, client_port);
     if (!debug_flag && (pid=fork())) {
 	pidfile=fopen("/var/run/ssl_proxy.pid", "w");
@@ -416,8 +430,8 @@ int main(int argc, char **argv) {
     }
     if (set_uid) {
 	debug("Changing userID to %.256s..", set_uid);
-	setuid(pass->pw_uid);
 	setgid(pass->pw_gid);
+	setuid(pass->pw_uid);
     }
 
     conn=malloc(max_conn*sizeof(Conn));
