@@ -1,0 +1,9 @@
+2001-06-14 17:44:03    Szilard Hajba <szilu@revai.hu>
+
+	* Write buffering bug fix. The bug caused some data damage when large
+		files transferred with HTTPS.
+	* Two config options added for the two way buffer sizes.
+
+2001-02-16 23:47:29    Szilard Hajba <szilu@revai.hu>
+
+	* Initial release, ChangeLog started

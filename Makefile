@@ -4,7 +4,7 @@ CINCLUDE =
 CFLAGS = -Wall -g3
 LDFLAGS =
 COPTS = $(CFLAGS) $(CCINCLUDE) $(CCPRAGMA)
-LDLIBS = -lcrypt -lssl -lcrypto
+LDLIBS = -lssl -lcrypto
 LDOPTS = $(LDFLAGS) $(LDLIBS)
 
 TARGET = ssl_proxy

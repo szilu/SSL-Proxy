@@ -19,6 +19,8 @@
 #define VERSION "0.9.1"
 #define BUFLEN 8192
 #define MAX_CONNECTION 32
+#define CS_BUFFER_LEN 2048
+#define SC_BUFFER_LEN 8192
 #define PEM_DIR "/etc/symbion"
 #define CERT_FILE "cert.pem"
 #define KEY_FILE "key.pem"
@@ -44,6 +46,7 @@
 
 int debug_flag=0;
 int max_conn=MAX_CONNECTION;
+int cs_buflen=CS_BUFFER_LEN, sc_buflen=SC_BUFFER_LEN;
 int server_port=443;
 char *client_host="localhost";
 int client_port=80;
@@ -59,12 +62,20 @@ RSA *ssl_private_key;
 struct sockaddr_in client_sa;
 typedef enum {cs_disconnected, cs_accept, cs_connected} ConnStatus;
 typedef struct {
-    ConnStatus stat;
-    int server_sock;
-    struct sockaddr_in server_sa;
-    int server_sa_len;
-    SSL *ssl_conn;
-    int client_sock;
+    ConnStatus stat;			// Status of the connection
+    int server_sock;			// Server side socket id
+    struct sockaddr_in server_sa;	// Server's socket address
+    int server_sa_len;			// ^^^^^^^^^^^^^^^^^^^^^^^'s len
+    SSL *ssl_conn;			// SSL connection structure pointer
+    int client_sock;			// Client side socket id
+    char *csbuf;			// Server side write buffer
+    char *csbuf_b;			// Server side write buffer begin ptr
+    char *csbuf_e;			// Server side write buffer end ptr
+    int c_end_req;			// Client requested connection close
+    char *scbuf;			// Client side write buffer
+    char *scbuf_b;			// Client side write buffer begin ptr
+    char *scbuf_e;			// Client side write buffer end ptr
+    int s_end_req;			// Server requested connection close
 } Conn;
 Conn *conn=NULL;
 
@@ -299,7 +310,7 @@ void sighandler(int signum) {
 int main(int argc, char **argv) {
     FILE *pidfile;
     int c, pid, i;
-    char *p1, *p2, buf[BUFLEN+1];
+    char *p1, *p2;
 
     debug("Symbion SSL proxy V" VERSION "\n");
     while ((c=getopt(argc, argv, "hdm:s:c:C:K:u:r:")) != EOF)
@@ -375,6 +386,13 @@ int main(int argc, char **argv) {
 
     conn=malloc(max_conn*sizeof(Conn));
     bzero(conn, max_conn*sizeof(Conn));
+    for (i=0; i<max_conn; i++) {
+	Conn *c=&conn[i];
+	c->scbuf=malloc(sc_buflen);
+	c->scbuf_b=c->scbuf; c->scbuf_e=c->scbuf;
+	c->csbuf=malloc(cs_buflen);
+	c->csbuf_b=c->csbuf; c->csbuf_e=c->csbuf;
+    }
 
     while (1) {
 	int event=0, ci;
@@ -384,39 +402,63 @@ int main(int argc, char **argv) {
 	    event=1;
 	}
 	for (ci=0; ci<max_conn; ci++) {
-	    switch (conn[ci].stat) {
+	    Conn *cn=&conn[ci];
+	    switch (cn->stat) {
 		case cs_accept:
-		    i=conn_ssl_accept(&conn[ci]);
+		    i=conn_ssl_accept(cn);
+		    cn->c_end_req=0; cn->s_end_req=0; event=1;
 		    break;
 		case cs_connected:
 		    // Check if data is available on server side
-		    i=SSL_read(conn[ci].ssl_conn, buf, BUFLEN);
+		    i=SSL_read(cn->ssl_conn, cn->csbuf_e, cs_buflen-(cn->csbuf_e-cn->csbuf));
 		    if (!i) { // End of connection
-			debug("Close: %d", ci);
-			conn_close(&conn[ci]); event=1;
+			debug("Close request: %d", ci);
+			cn->c_end_req=1; event=1;
 		    } else if (i<0) { // Error
 			if (errno!=EAGAIN) {
 			    debug("SSL_read() errno: %d", errno);
-			    conn_close(&conn[ci]); event=1;
+			    cn->c_end_req=1; event=1;
 			}
-		    } else {
-			write(conn[ci].client_sock, buf, i); event=1;
-			if (debug_flag) write(2, buf, i);
+		    } else cn->csbuf_e+=i;
+		    if (cn->csbuf_e-cn->csbuf_b>0) {
+			i=write(cn->client_sock, cn->csbuf_b, cn->csbuf_e-cn->csbuf_b); event=1;
+			if (debug_flag) write(2, cn->csbuf_b, cn->csbuf_e-cn->csbuf_b);
+			if (i>0) cn->csbuf_b+=i;
+			if (cn->scbuf_b==cn->scbuf_e) {
+			    cn->scbuf_b=cn->scbuf_e=cn->scbuf;
+			    if (cn->c_end_req) conn_close(cn);
+			}
 		    }
 		default:
 	    }
-	    if (conn[ci].stat==cs_connected) {
+	    if (cn->stat==cs_connected) {
 		// Check if data is available on client side
-		i=read(conn[ci].client_sock, buf, BUFLEN);
-		if (!i) { // End of connection
-		    conn_close(&conn[ci]); event=1;
-		} else if (i<0) { // Error
-		    if (errno!=EAGAIN) {
-			debug("read errno: %d", errno);
-			conn_close(&conn[ci]); event=1;
+		if (sc_buflen-(cn->scbuf_e-cn->scbuf)) {
+		    i=read(cn->client_sock, cn->scbuf_e, sc_buflen-(cn->scbuf_e-cn->scbuf));
+		    if (!i) { // End of connection
+			cn->s_end_req=1; event=1;
+		    } else if (i<0) { // Error
+			if (errno!=EAGAIN) {
+			    debug("read errno: %d", errno);
+			    cn->s_end_req=1; event=1;
+			}
+		    } else cn->scbuf_e+=i;
+		}
+		if (cn->scbuf_e-cn->scbuf_b>0) {
+		    i=SSL_write(cn->ssl_conn, cn->scbuf_b, cn->scbuf_e-cn->scbuf_b);
+		    if (i>0) debug("transfer: buf=%d, b=%d, l=%d, i=%d", cn->scbuf,
+			    cn->scbuf_b, cn->scbuf_e-cn->scbuf_b, i);
+		    if (i>=0) {
+			cn->scbuf_b+=i; event=1;
 		    }
-		} else {
-		    SSL_write(conn[ci].ssl_conn, buf, i); event=1;
+		    else if (errno!=EAGAIN) {
+			debug("SSL_write() errno: %d", errno);
+			event=1;
+		    }
+		    if (cn->scbuf_b==cn->scbuf_e) {
+			cn->scbuf_b=cn->scbuf_e=cn->scbuf;
+			if (cn->s_end_req) conn_close(cn);
+		    }
 		}
 	    }
 	}
