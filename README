@@ -37,8 +37,9 @@ options.
 	-d			Turn on debugging. SSL Proxy will not go into
 				the background and it will print a lot of
 				debug information to stderr.
-	-s <server port>	Specify the port, which SSL Proxy will listen
-				on.
+	-s [<server host>:]<server port>
+				Specify the port, which SSL Proxy will listen
+				on (or address to bind to a specific interface).
 	-c [<client host>:]<client port>
 				Specify the TCP port, which SSL Proxy will
 				connect to as a client (The forwarding port).
