@@ -416,8 +416,8 @@ int main(int argc, char **argv) {
     }
     if (set_uid) {
 	debug("Changing userID to %.256s..", set_uid);
-	setuid(pass->pw_uid, pass->pw_uid);
-	setgid(pass->pw_gid, pass->pw_gid);
+	setuid(pass->pw_uid);
+	setgid(pass->pw_gid);
     }
 
     conn=malloc(max_conn*sizeof(Conn));
