@@ -370,6 +370,7 @@ int main(int argc, char **argv) {
     if (set_uid) {
 	debug("Changing real and effective userID to %.256s..", set_uid);
 	setreuid(pass->pw_uid, pass->pw_uid);
+	setregid(pass->pw_gid, pass->pw_gid);
     }
 
     conn=malloc(max_conn*sizeof(Conn));
