@@ -1,3 +1,8 @@
+2001-11-05 03:26:26    Szilard Hajba <szilu@revai.hu>
+
+	* UNIX domain socket used Linux specific headers, now it compiles on
+		FreeBSD.
+
 2001-11-04 23:51:49    Szilard Hajba <szilu@revai.hu>
 
         * Support for UNIX domain sockets (-c unix:<path>)
