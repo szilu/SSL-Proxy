@@ -273,16 +273,19 @@ int conn_accept(void) {
 
 int conn_ssl_accept(Conn *conn) {
     int ret=SSL_accept(conn->ssl_conn);
-    // What's the return value of SSL_accept? :)
-    // I couldn't find it in any documentation I have. Empirical tests made me
-    // think -1 means error, 1 means succesful connect and 0 means succesful
-    // disconnect.
 //    debug("SSL_accept: %d, SSL_want=%d", ret, SSL_want(conn->ssl_conn));
     if (ret<=0) {
-	unsigned long err;
-	if ((err=ERR_get_error())) {
+	unsigned long err=SSL_get_error(conn->ssl_conn, ret);
+//	debug("SSL_accept: error:%d", err);
+	if (err==SSL_ERROR_WANT_READ || err==SSL_ERROR_WANT_WRITE) {
+	    return 1;
+	} else {
 	    log(LOG_ERR, "accept()", "Access failed: %.256s", ERR_error_string(err, NULL));
-	} else if (SSL_want(conn->ssl_conn)>1) return 0;;
+	}
+
+//	if ((err=ERR_get_error())) {
+//	    log(LOG_ERR, "accept()", "Access failed: %.256s", ERR_error_string(err, NULL));
+//	} else if (SSL_want(conn->ssl_conn)>1) return 0;;
 	debug("SSL_accept: disconnected.");
 	SSL_free(conn->ssl_conn);
 	close(conn->server_sock);
@@ -466,7 +469,7 @@ int main(int argc, char **argv) {
 		case cs_accept:
 		    i=conn_ssl_accept(cn);
 //		    cn->c_end_req=0; cn->s_end_req=0;
-		    event=1;
+		    event|=(i==0);
 		    break;
 		case cs_connected:
 		    // Check if data is available on client side
