@@ -33,7 +33,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <netinet/in.h>
-#include <linux/un.h>
+#include <sys/un.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
@@ -211,12 +211,13 @@ void client_init(char *addr, int port) {
     } else { // UNIX domain socket
 	client_sa_un.sun_family=AF_UNIX;
 	if (addr) {
-	    if (strlen(addr)>=UNIX_PATH_MAX) {
-		fprintf(stderr, "client_init(): client address too long");
+	    if (strlen(addr)>=sizeof(client_sa_un.sun_path)) {
+		fprintf(stderr, "client_init(): client address too long (allowed: %d)\n",
+			sizeof(client_sa_un.sun_path));
 		exit(1);
 	    } else strcpy(client_sa_un.sun_path, addr);
 	} else {
-	    fprintf(stderr, "client_init(): client address missing");
+	    fprintf(stderr, "client_init(): client address missing\n");
 	    exit(1);
 	}
 	client_sa=(struct sockaddr *)&client_sa_un;
