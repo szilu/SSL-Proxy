@@ -415,7 +415,7 @@ int main(int argc, char **argv) {
 	chdir("/");
     }
     if (set_uid) {
-	debug("Changing real and effective userID to %.256s..", set_uid);
+	debug("Changing userID to %.256s..", set_uid);
 	setuid(pass->pw_uid, pass->pw_uid);
 	setgid(pass->pw_gid, pass->pw_gid);
     }
