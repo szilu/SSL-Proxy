@@ -1,3 +1,7 @@
+2001-10-08 01:39:46    Szilard Hajba <szilu@revai.hu>
+
+	* Some bugs were fixed, now it is tested with large file transfers
+
 2001-06-14 17:44:03    Szilard Hajba <szilu@revai.hu>
 
 	* Write buffering bug fix. The bug caused some data damage when large
