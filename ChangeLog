@@ -1,3 +1,9 @@
+2001-11-04 23:51:49    Szilard Hajba <szilu@revai.hu>
+
+        * Support for UNIX domain sockets (-c unix:<path>)
+        * Log errors to syslog
+        * Stable release 1.0.0
+
 2001-10-08 01:39:46    Szilard Hajba <szilu@revai.hu>
 
 	* Some bugs were fixed, now it is tested with large file transfers

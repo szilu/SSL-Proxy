@@ -3,7 +3,7 @@ General information
 
 The Symbion SSL Proxy is a network server application. It listens on a TCP
 port, accepts SSL connections, and forwards them to an other (local or remote)
-TCP port.
+TCP port, or UNIX domain socket.
 It is NOT a HTTPS server itself, but it can act as a HTTPS server, if you run
 an SSL Proxy server on port 443 which forwards the connections to port 80.
 SSL Proxy is tested with HTTP, but it should work with any SSL protocols, I
@@ -42,6 +42,9 @@ options.
 	-c [<client host>:]<client port>
 				Specify the TCP port, which SSL Proxy will
 				connect to as a client (The forwarding port).
+	-c unix:<client port>
+				Specify the UNIX domain socket, which SSL Proxy
+				will connect to as a client (The forwarding port).
 	-m <max connection>	SSL Proxy will accept maximum this number of
 				connections.
     SSL options:
@@ -55,6 +58,18 @@ options.
 Defaults:
     # ssl_proxy -s 443 -c localhost:80 -m 32 -C /etc/symbion/cert.pem \
 	    -L /etc/symbion/key.pem
+
+Notes
+=====
+SSL Proxy 1.0.0 introduced the ability to connect to UNIX domain sockets, not
+just TCP sockets. Please note that if you use UNIX domain sockets and you also
+use the -r (chroot) feature to make your system more secure, than the socket
+file must reside under the chrooted directory. The path specified in the -c
+option must be relative to the chrooted directory.
+Also note that if you use UNIX domain sockets with the -u (setuid) feature,
+then the user must have read and write permission to the socket file.
+The TCP sockets has no similar limitations, because they are not associated
+with filesystem objects.
 
 Examples
 ========

@@ -1,4 +1,4 @@
-/* Symbion SSL Proxy V0.9.1
+/* Symbion SSL Proxy 1.0.0
  * Copyright (C) 2000 Szilard Hajba
  *
  * This library is free software; you can redistribute it and/or
@@ -16,7 +16,7 @@
  * Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#define VERSION "0.9.1"
+#define VERSION "1.0.0"
 #define BUFLEN 8192
 #define MAX_CONNECTION 32
 //#define CS_BUFFER_LEN 2
@@ -29,9 +29,11 @@
 
 #include <stdio.h>
 #include <stdarg.h>
+#include <syslog.h>
 #include <unistd.h>
 #include <signal.h>
 #include <netinet/in.h>
+#include <linux/un.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
@@ -50,7 +52,7 @@ int debug_flag=0;
 int max_conn=MAX_CONNECTION;
 int cs_buflen=CS_BUFFER_LEN, sc_buflen=SC_BUFFER_LEN;
 int server_port=443;
-char *client_host="localhost";
+char *client_addr="localhost";
 int client_port=80;
 char *cert_file=PEM_DIR"/"CERT_FILE, *key_file=PEM_DIR"/"KEY_FILE;
 char *chroot_dir=NULL, *set_uid=NULL;
@@ -61,7 +63,12 @@ SSL_CTX *server_ssl_ctx;
 X509 *ssl_public_cert;
 RSA *ssl_private_key;
 
-struct sockaddr_in client_sa;
+int client_s_family=AF_INET;
+struct sockaddr *client_sa;
+struct sockaddr_in client_sa_in;
+struct sockaddr_un client_sa_un;
+int client_sa_len;
+
 typedef enum {cs_disconnected, cs_accept, cs_connected, cs_closing} ConnStatus;
 typedef struct {
     ConnStatus stat;			// Status of the connection
@@ -83,15 +90,6 @@ Conn *conn=NULL;
 
 void conn_close(Conn *conn);
 
-void log(const char *cls, const char *format,...) {
-    char str[8192];
-    va_list args;
-    va_start(args, format);
-    vsprintf(str, format, args);
-    va_end(args);
-    fprintf(stderr, "%.256s: %.256s\n", cls, str);
-}
-
 void debug(char *format,...) {
     if (debug_flag) {
 	va_list args;
@@ -100,6 +98,16 @@ void debug(char *format,...) {
 	putc('\n', stderr);
 	va_end(args);
     }
+}
+
+void log(int level, const char *cls, const char *format,...) {
+    char str[8192];
+    va_list args;
+    va_start(args, format);
+    vsprintf(str, format, args);
+    va_end(args);
+    syslog(level, "%.256s: %.256s\n", cls, str);
+    if (debug_flag) debug("LOG: %.256s: %.256s", cls, str);
 }
 
 // ============================================== Server
@@ -140,7 +148,7 @@ static RSA *tmp_rsa_cb(SSL *ssl, int export, int key_len) {
     if (export) {
 	rsa=RSA_generate_key(key_len, RSA_F4, NULL, NULL);
     } else {
-	log("tmp_rsa_callback()", "Export not set");
+	log(LOG_ERR, "tmp_rsa_callback()", "Export not set");
     }
     return rsa;
 }
@@ -187,16 +195,33 @@ void server_ssl_init(char *cert, char *key) {
 }
 
 // ============================================== CLient
-void client_init(char *host, int port) {
-    struct hostent *hp;
-    client_sa.sin_family=AF_INET;
-    hp=gethostbyname(host);
-    if (hp==NULL) {
-        perror("bind()");
-        exit(1);
+void client_init(char *addr, int port) {
+    if (port) { // TCP connection
+	struct hostent *hp;
+	client_sa_in.sin_family=AF_INET;
+	hp=gethostbyname(addr);
+	if (!hp) {
+	    perror("gethostbyname()");
+	    exit(1);
+	}
+	bcopy(hp->h_addr, &client_sa_in.sin_addr, hp->h_length);
+	client_sa_in.sin_port=htons(port);
+	client_sa=(struct sockaddr *)&client_sa_in;
+	client_sa_len=sizeof(client_sa_in);
+    } else { // UNIX domain socket
+	client_sa_un.sun_family=AF_UNIX;
+	if (addr) {
+	    if (strlen(addr)>=UNIX_PATH_MAX) {
+		fprintf(stderr, "client_init(): client address too long");
+		exit(1);
+	    } else strcpy(client_sa_un.sun_path, addr);
+	} else {
+	    fprintf(stderr, "client_init(): client address missing");
+	    exit(1);
+	}
+	client_sa=(struct sockaddr *)&client_sa_un;
+	client_sa_len=sizeof(client_sa_un);
     }
-    bcopy(hp->h_addr, &client_sa.sin_addr, hp->h_length);
-    client_sa.sin_port=htons(port);
 }
 
 // ============================================== Connection
@@ -205,12 +230,12 @@ unsigned int server_sa_len;
 int conn_accept() {
     int i;
     // Initialize SSL connection (server side)
-    int s=accept(server_socket, &server_sa, &server_sa_len);
+    int s=accept(server_socket, (struct sockaddr *)&server_sa, &server_sa_len);
     if (s<=0) return 0;
     debug("conn_accept(): Client connected");
     for (i=0; i<max_conn && conn[i].stat!=cs_disconnected; i++);
     if (i==max_conn) {
-	log("accept", "Internal error");
+	log(LOG_ERR, "accept()", "Internal error");
 	close(s);
 	return 0;
     }
@@ -221,13 +246,13 @@ int conn_accept() {
     conn[i].ssl_conn=SSL_new(server_ssl_ctx);
     SSL_set_fd(conn[i].ssl_conn, conn[i].server_sock);
     if (!SSL_use_RSAPrivateKey(conn[i].ssl_conn, ssl_private_key)) {
-	log("accept", "Error reading private key");
+	log(LOG_ERR, "accept()", "Error reading private key");
 	SSL_free(conn[i].ssl_conn);
 	close(conn[i].server_sock);
 	return -1;
     }
     if (!SSL_use_certificate(conn[i].ssl_conn, ssl_public_cert)) {
-	log("accept", "Error reading public certificate");
+	log(LOG_ERR, "accept()", "Error reading public certificate");
 	SSL_free(conn[i].ssl_conn);
 	close(conn[i].server_sock);
 	return -1;
@@ -250,7 +275,7 @@ int conn_ssl_accept(Conn *conn) {
     if (ret<=0) {
 	unsigned long err;
 	if ((err=ERR_get_error())) {
-	    log("accept", "Access failed: %.256s", ERR_error_string(err, NULL));
+	    log(LOG_ERR, "accept()", "Access failed: %.256s", ERR_error_string(err, NULL));
 	} else if (SSL_want(conn->ssl_conn)>1) return 0;;
 	debug("SSL_accept: disconnected.");
 	SSL_free(conn->ssl_conn);
@@ -260,16 +285,16 @@ int conn_ssl_accept(Conn *conn) {
     }
 
     // Connect to server (client side)
-    conn->client_sock=socket(AF_INET, SOCK_STREAM, 0);
+    conn->client_sock=socket(client_s_family, SOCK_STREAM, 0);
     if (conn->client_sock<0) {
-	log("socket()", sys_errlist[errno]);
+	log(LOG_ERR, "socket()", sys_errlist[errno]);
 	SSL_free(conn->ssl_conn);
 	close(conn->server_sock);
 	conn->stat=cs_disconnected;
 	return -1;
     }
-    if (connect(conn->client_sock, (struct sockaddr *)&client_sa, sizeof(struct sockaddr_in))<0) {
-	log("connect()", sys_errlist[errno]);
+    if (connect(conn->client_sock, client_sa, client_sa_len)<0) {
+	log(LOG_ERR, "connect()", sys_errlist[errno]);
 	close(conn->client_sock);
 	SSL_free(conn->ssl_conn);
 	close(conn->server_sock);
@@ -295,7 +320,7 @@ void sighandler(int signum) {
     switch (signum) {
 	case SIGINT:
 	case SIGTERM:
-	    log("SIGNAL", "Interrupt/terminate");
+	    log(LOG_NOTICE, "signal", "Interrupt/terminate");
 	    server_done();
 	    // If it's possible to remove pid file, try it..
 	    // It's not guaranteed to succeed, because of setreuid
@@ -310,13 +335,14 @@ int main(int argc, char **argv) {
     int c, pid, i;
     char *p1, *p2;
 
-    debug("Symbion SSL proxy V" VERSION "\n");
     while ((c=getopt(argc, argv, "hdm:s:c:C:K:u:r:")) != EOF)
 	switch (c) {
 	    case 'h':
-		fprintf(stderr, "usage: %.256s [-d] [-s <server port>] [-c [<client host>:]<client port>]\n", argv[0]);
-		fprintf(stderr, "               [-m <max connection>] [-C <certificate file>] [-K <key file>]\n");
-		fprintf(stderr, "               [-u <user/uid>] [-r <chroot dir>]\n");
+		fprintf(stderr, "Symbion SSL proxy " VERSION "\n"
+			"usage: %.256s [-d] [-s <listen port>] [-c <client address>]\n"
+			"              [-m <max connection>] [-C <certificate file>] [-K <key file>]\n"
+			"              [-u <user/uid>] [-r <chroot dir>]\n"
+			"        <client address> = [<host>:]<port> | unix:<path>\n", argv[0]);
 		fprintf(stderr, "       %.256s -h\n", argv[0]);
 		exit(0);
 	    case 'd':
@@ -332,9 +358,16 @@ int main(int argc, char **argv) {
 		p1=strtok(optarg, ":");
 		p2=strtok(NULL, "");
 		if (p2) {
-		    client_host=p1; client_port=atoi(p2);
+		    if (!strcmp(p1, "unix")) {
+			client_s_family=AF_UNIX;
+			client_addr=p2;
+			client_port=0;
+		    } else {
+			client_addr=p1;
+			client_port=atoi(p2);
+		    }
 		} else {
-		    client_host="localhost"; client_port=atoi(p1);
+		    client_addr="localhost"; client_port=atoi(p1);
 		}
 		break;
 	    case 'C':
@@ -350,14 +383,18 @@ int main(int argc, char **argv) {
 		chroot_dir=optarg;
 		break;
 	}
+    debug("Symbion SSL proxy " VERSION);
     signal(SIGINT, sighandler);
     signal(SIGTERM, sighandler);
     // This must be done before process_security_init(), because server_port
     // can be a privileged port, ssl_init use files from the filesystem.
-    debug("Using server: %.256s, port: %d", client_host, client_port);
+    if (client_s_family==AF_INET)
+	debug("Using server: family=INET host=%.256s port=%d", client_addr, client_port);
+    else
+	debug("Using server: family=UNIX path=%.256s", client_addr);
     server_init(server_port, max_conn);
     server_ssl_init(cert_file, key_file);
-    client_init(client_host, client_port);
+    client_init(client_addr, client_port);
     if (!debug_flag && (pid=fork())) {
 	pidfile=fopen("/var/run/ssl_proxy.pid", "w");
 	if (pidfile) {
@@ -391,6 +428,14 @@ int main(int argc, char **argv) {
 	c->csbuf=malloc(cs_buflen);
 	c->csbuf_b=c->csbuf; c->csbuf_e=c->csbuf;
     }
+
+    openlog("sslproxy", LOG_PID, LOG_DAEMON);
+    if (client_s_family==AF_INET)
+	log(LOG_NOTICE, "init", "version " VERSION " started (family=INET host=%.256s port=%d).",
+		client_addr, client_port);
+    else
+	log(LOG_NOTICE, "init", "version " VERSION " started (family=UNIX path=%.256s).",
+		client_addr);
 
     while (1) {
 	int event=0, ci;
