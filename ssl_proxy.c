@@ -19,6 +19,8 @@
 #define VERSION "0.9.1"
 #define BUFLEN 8192
 #define MAX_CONNECTION 32
+//#define CS_BUFFER_LEN 2
+//#define SC_BUFFER_LEN 40
 #define CS_BUFFER_LEN 2048
 #define SC_BUFFER_LEN 8192
 #define PEM_DIR "/etc/symbion"
@@ -60,7 +62,7 @@ X509 *ssl_public_cert;
 RSA *ssl_private_key;
 
 struct sockaddr_in client_sa;
-typedef enum {cs_disconnected, cs_accept, cs_connected} ConnStatus;
+typedef enum {cs_disconnected, cs_accept, cs_connected, cs_closing} ConnStatus;
 typedef struct {
     ConnStatus stat;			// Status of the connection
     int server_sock;			// Server side socket id
@@ -71,11 +73,11 @@ typedef struct {
     char *csbuf;			// Server side write buffer
     char *csbuf_b;			// Server side write buffer begin ptr
     char *csbuf_e;			// Server side write buffer end ptr
-    int c_end_req;			// Client requested connection close
+//    int c_end_req;			// Client requested connection close
     char *scbuf;			// Client side write buffer
     char *scbuf_b;			// Client side write buffer begin ptr
     char *scbuf_e;			// Client side write buffer end ptr
-    int s_end_req;			// Server requested connection close
+//    int s_end_req;			// Server requested connection close
 } Conn;
 Conn *conn=NULL;
 
@@ -91,13 +93,12 @@ void log(const char *cls, const char *format,...) {
 }
 
 void debug(char *format,...) {
-    char str[8192];
     if (debug_flag) {
 	va_list args;
 	va_start(args, format);
-	vsprintf(str, format, args);
+	vfprintf(stderr, format, args);
+	putc('\n', stderr);
 	va_end(args);
-	fprintf(stderr, "%.256s\n", str);
     }
 }
 
@@ -205,8 +206,6 @@ int conn_accept() {
     int i;
     // Initialize SSL connection (server side)
     int s=accept(server_socket, &server_sa, &server_sa_len);
-    // FIXME
-//    if (server_sa_len>32) server_sa_len=0;
     if (s<=0) return 0;
     debug("conn_accept(): Client connected");
     for (i=0; i<max_conn && conn[i].stat!=cs_disconnected; i++);
@@ -219,7 +218,6 @@ int conn_accept() {
     conn[i].server_sock=s;
     bcopy(&server_sa, &conn[i].server_sa, server_sa_len);
     conn[i].server_sa_len=server_sa_len;
-//    fcntl(conn[i].server_sock, F_SETFL, O_NONBLOCK);
     conn[i].ssl_conn=SSL_new(server_ssl_ctx);
     SSL_set_fd(conn[i].ssl_conn, conn[i].server_sock);
     if (!SSL_use_RSAPrivateKey(conn[i].ssl_conn, ssl_private_key)) {
@@ -284,7 +282,7 @@ int conn_ssl_accept(Conn *conn) {
 }
 
 void conn_close(Conn *conn) {
-    debug("conn_close(): Closing connection (s=%d)", conn->server_sock);
+    debug("conn_close(): s=%d", conn->server_sock);
     shutdown(conn->client_sock, 2);
     close(conn->client_sock);
     SSL_free(conn->ssl_conn);
@@ -403,63 +401,84 @@ int main(int argc, char **argv) {
 	}
 	for (ci=0; ci<max_conn; ci++) {
 	    Conn *cn=&conn[ci];
+	    int l;
 	    switch (cn->stat) {
 		case cs_accept:
 		    i=conn_ssl_accept(cn);
-		    cn->c_end_req=0; cn->s_end_req=0; event=1;
+//		    cn->c_end_req=0; cn->s_end_req=0;
+		    event=1;
 		    break;
 		case cs_connected:
-		    // Check if data is available on server side
-		    i=SSL_read(cn->ssl_conn, cn->csbuf_e, cs_buflen-(cn->csbuf_e-cn->csbuf));
-		    if (!i) { // End of connection
-			debug("Close request: %d", ci);
-			cn->c_end_req=1; event=1;
-		    } else if (i<0) { // Error
-			if (errno!=EAGAIN) {
-			    debug("SSL_read() errno: %d", errno);
-			    cn->c_end_req=1; event=1;
+		    // Check if data is available on client side
+		    if ((l=cs_buflen-(cn->csbuf_e-cn->csbuf))) {
+			i=SSL_read(cn->ssl_conn, cn->csbuf_e, l);
+			if (!i) { // End of connection
+			    debug("Close request: %d", ci);
+			    cn->stat=cs_closing; event=1;
+//			    cn->c_end_req=1;
+			} else if (i<0) { // Error
+			    if (errno!=EAGAIN) {
+				debug("SSL_read() errno: %d", errno);
+				cn->stat=cs_closing; event=1;
+//				cn->c_end_req=1;
+			    }
+			} else cn->csbuf_e+=i;
+		    }
+		case cs_closing:
+		    // Send buffered data to server
+		    if ((l=cn->csbuf_e-cn->csbuf_b)>0) {
+			i=write(cn->client_sock, cn->csbuf_b, l); event=1;
+			if (debug_flag) write(2, cn->csbuf_b, l);
+			if (i>=0) {
+			    cn->csbuf_b+=i;
+			} else {
+			    if (errno!=EAGAIN) {
+				debug("write() errno: %d", errno);
+				cn->stat=cs_closing;
+			    }
 			}
-		    } else cn->csbuf_e+=i;
-		    if (cn->csbuf_e-cn->csbuf_b>0) {
-			i=write(cn->client_sock, cn->csbuf_b, cn->csbuf_e-cn->csbuf_b); event=1;
-			if (debug_flag) write(2, cn->csbuf_b, cn->csbuf_e-cn->csbuf_b);
-			if (i>0) cn->csbuf_b+=i;
-			if (cn->scbuf_b==cn->scbuf_e) {
-			    cn->scbuf_b=cn->scbuf_e=cn->scbuf;
-			    if (cn->c_end_req) conn_close(cn);
+			if (cn->csbuf_b==cn->csbuf_e) {
+			    cn->csbuf_b=cn->csbuf_e=cn->csbuf;
+//			    if (cn->c_end_req) conn_close(cn);
 			}
 		    }
+		    if (cn->stat==cs_closing && cn->csbuf_e==cn->csbuf_b
+			    && cn->csbuf_e==cn->csbuf_b) conn_close(cn);
 		default:
 	    }
 	    if (cn->stat==cs_connected) {
-		// Check if data is available on client side
-		if (sc_buflen-(cn->scbuf_e-cn->scbuf)) {
-		    i=read(cn->client_sock, cn->scbuf_e, sc_buflen-(cn->scbuf_e-cn->scbuf));
+		// Check if data is available on server side
+		if ((l=sc_buflen-(cn->scbuf_e-cn->scbuf))) {
+		    i=read(cn->client_sock, cn->scbuf_e, l);
 		    if (!i) { // End of connection
-			cn->s_end_req=1; event=1;
+			cn->stat=cs_closing; event=1;
+//			cn->s_end_req=1;
 		    } else if (i<0) { // Error
 			if (errno!=EAGAIN) {
 			    debug("read errno: %d", errno);
-			    cn->s_end_req=1; event=1;
+			    cn->stat=cs_closing; event=1;
+//			    cn->s_end_req=1;
 			}
 		    } else cn->scbuf_e+=i;
 		}
-		if (cn->scbuf_e-cn->scbuf_b>0) {
-		    i=SSL_write(cn->ssl_conn, cn->scbuf_b, cn->scbuf_e-cn->scbuf_b);
+		// Send buffered data to client
+		if ((l=cn->scbuf_e-cn->scbuf_b)>0) {
+		    i=SSL_write(cn->ssl_conn, cn->scbuf_b, l);
 		    if (i>0) debug("transfer: buf=%d, b=%d, l=%d, i=%d", cn->scbuf,
-			    cn->scbuf_b, cn->scbuf_e-cn->scbuf_b, i);
+			    cn->scbuf_b, l, i);
 		    if (i>=0) {
 			cn->scbuf_b+=i; event=1;
-		    }
-		    else if (errno!=EAGAIN) {
+		    } else if (errno!=EAGAIN) {
 			debug("SSL_write() errno: %d", errno);
 			event=1;
 		    }
 		    if (cn->scbuf_b==cn->scbuf_e) {
 			cn->scbuf_b=cn->scbuf_e=cn->scbuf;
-			if (cn->s_end_req) conn_close(cn);
+//			if (cn->s_end_req) conn_close(cn);
 		    }
 		}
+		if (cn->stat==cs_closing && cn->csbuf_e==cn->csbuf_b
+			&& cn->scbuf_e==cn->scbuf_b) conn_close(cn);
 	    }
 	}
 	if (!event) usleep(100);
