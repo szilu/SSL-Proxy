@@ -1,17 +1,17 @@
-/* Symbion SSL Proxy 1.0.0
- * Copyright (C) 2000 Szilard Hajba
+/* Symbion SSL Proxy 1.0.2
+ * Copyright (C) 2000-2004 Szilard Hajba
  *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Library General Public
- * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of
+ * the License, or (at your option) any later version.
  *
- * This library is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Library General Public License for more details.
+ * General Public License for more details.
  *
- * You should have received a copy of the GNU Library General Public
+ * You should have received a copy of the GNU General Public
  * License along with this library; if not, write to the Free
  * Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
@@ -50,6 +50,7 @@
 #include <openssl/rand.h>
 
 int debug_flag=0;
+int fg_flag=0;
 int max_conn=MAX_CONNECTION;
 int cs_buflen=CS_BUFFER_LEN, sc_buflen=SC_BUFFER_LEN;
 char *server_addr="0.0.0.0";
@@ -348,7 +349,7 @@ int main(int argc, char **argv) {
 	switch (c) {
 	    case 'h':
 		fprintf(stderr, "Symbion SSL proxy " VERSION "\n"
-			"usage: %.256s [-d] [-s <listen address>] [-c <client address>]\n"
+			"usage: %.256s [-d] [-f] [-s <listen address>] [-c <client address>]\n"
 			"              [-m <max connection>] [-C <certificate file>] [-K <key file>]\n"
 			"              [-u <user/uid>] [-r <chroot dir>]\n"
 			"        <lister address> = [<host>:]<port>\n"
@@ -357,6 +358,9 @@ int main(int argc, char **argv) {
 		exit(0);
 	    case 'd':
 		debug_flag=1;
+		break;
+	    case 'f':
+		fg_flag=1;
 		break;
 	    case 'm':
 		max_conn=atoi(optarg);
@@ -413,7 +417,7 @@ int main(int argc, char **argv) {
     server_init(server_addr, server_port, max_conn);
     server_ssl_init();
     client_init(client_addr, client_port);
-    if (!debug_flag && (pid=fork())) {
+    if (!debug_flag && !fg_flag && (pid=fork())) {
 	pidfile=fopen("/var/run/ssl_proxy.pid", "w");
 	if (pidfile) {
 	    fprintf(pidfile, "%d\n", pid);

@@ -37,6 +37,9 @@ options.
 	-d			Turn on debugging. SSL Proxy will not go into
 				the background and it will print a lot of
 				debug information to stderr.
+	-f			Do not detach from the terminal and run in the
+				forground. Useful if you want to run SSL Proxy
+				from Symbion Daemon Tool.
 	-s [<server host>:]<server port>
 				Specify the port, which SSL Proxy will listen
 				on (or address to bind to a specific interface).
