@@ -269,8 +269,8 @@ int conn_accept(void) {
     BIO_set_nbio(SSL_get_wbio(conn[i].ssl_conn), 0);
     fcntl(conn[i].server_sock, F_SETFL, O_NONBLOCK);
     conn[i].stat=cs_accept;
-    conn[i]->scbuf_b=conn[i]->scbuf; conn[i]->scbuf_e=conn[i]->scbuf;
-    conn[i]->csbuf_b=conn[i]->csbuf; conn[i]->csbuf_e=conn[i]->csbuf;
+    conn[i].scbuf_b=conn[i].scbuf; conn[i].scbuf_e=conn[i].scbuf;
+    conn[i].csbuf_b=conn[i].csbuf; conn[i].csbuf_e=conn[i].csbuf;
     return conn[i].server_sock;
 }
 
@@ -338,7 +338,7 @@ void sighandler(int signum) {
 	    // It's not guaranteed to succeed, because of setuid
 	    if (!chroot_dir) unlink("/var/run/ssl_proxy.pid");
 	    exit(0);
-	default:
+	default:;
     }
 }
 
@@ -512,7 +512,7 @@ int main(int argc, char **argv) {
 			}
 		    }
 		    if (cn->stat==cs_closing && cn->csbuf_e==cn->csbuf_b) conn_close(cn);
-		default:
+		default:;
 	    }
 	    if (cn->stat==cs_connected) {
 		// Check if data is available on server side
