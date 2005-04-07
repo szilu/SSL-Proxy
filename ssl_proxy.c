@@ -269,6 +269,8 @@ int conn_accept(void) {
     BIO_set_nbio(SSL_get_wbio(conn[i].ssl_conn), 0);
     fcntl(conn[i].server_sock, F_SETFL, O_NONBLOCK);
     conn[i].stat=cs_accept;
+    conn[i]->scbuf_b=conn[i]->scbuf; conn[i]->scbuf_e=conn[i]->scbuf;
+    conn[i]->csbuf_b=conn[i]->csbuf; conn[i]->csbuf_e=conn[i]->csbuf;
     return conn[i].server_sock;
 }
 
@@ -345,7 +347,7 @@ int main(int argc, char **argv) {
     int c, pid, i;
     char *p1, *p2;
 
-    while ((c=getopt(argc, argv, "hdm:s:c:C:K:u:r:")) != EOF)
+    while ((c=getopt(argc, argv, "hdfm:s:c:C:K:u:r:")) != EOF)
 	switch (c) {
 	    case 'h':
 		fprintf(stderr, "Symbion SSL proxy " VERSION "\n"
@@ -509,8 +511,7 @@ int main(int argc, char **argv) {
 //			    if (cn->c_end_req) conn_close(cn);
 			}
 		    }
-		    if (cn->stat==cs_closing && cn->csbuf_e==cn->csbuf_b
-			    && cn->csbuf_e==cn->csbuf_b) conn_close(cn);
+		    if (cn->stat==cs_closing && cn->csbuf_e==cn->csbuf_b) conn_close(cn);
 		default:
 	    }
 	    if (cn->stat==cs_connected) {
