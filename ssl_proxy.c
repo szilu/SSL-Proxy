@@ -91,7 +91,8 @@ typedef struct {
 } Conn;
 Conn *conn=NULL;
 
-void conn_close(Conn *conn);
+void conn_close_client(Conn *conn);
+void conn_close_server(Conn *conn);
 
 void debug(char *format,...) {
     if (debug_flag) {
@@ -143,8 +144,10 @@ void server_done(void) {
     usleep(100);
     close(server_socket);
     for (ci=0; ci<max_conn; ci++)
-	if (conn[ci].stat==cs_accept && conn[ci].stat==cs_connected)
-	    conn_close(&conn[ci]);
+	if (conn[ci].stat==cs_accept && conn[ci].stat==cs_connected) {
+	    conn_close_client(&conn[ci]);
+	    conn_close_server(&conn[ci]);
+	}
 }
 
 // ============================================== Server SSL
@@ -318,6 +321,7 @@ int conn_ssl_accept(Conn *conn) {
     return 0;
 }
 
+/*
 void conn_close(Conn *conn) {
     debug("conn_close(): s=%d", conn->server_sock);
     shutdown(conn->client_sock, 2);
@@ -326,6 +330,24 @@ void conn_close(Conn *conn) {
     shutdown(conn->server_sock, 2);
     close(conn->server_sock);
     conn->stat=cs_disconnected;
+}
+*/
+
+void conn_close_client(Conn *conn) {
+    debug("conn_close_client(): s=%d", conn->client_sock);
+    shutdown(conn->client_sock, 2);
+    close(conn->client_sock);
+    conn->client_sock=-1;
+    if (conn->server_sock==-1) conn->stat=cs_disconnected;
+}
+
+void conn_close_server(Conn *conn) {
+    debug("conn_close_server(): s=%d", conn->server_sock);
+    SSL_free(conn->ssl_conn);
+    shutdown(conn->server_sock, 2);
+    close(conn->server_sock);
+    conn->server_sock=-1;
+    if (conn->client_sock==-1) conn->stat=cs_disconnected;
 }
 
 void sighandler(int signum) {
@@ -410,6 +432,7 @@ int main(int argc, char **argv) {
     debug("Symbion SSL proxy " VERSION);
     signal(SIGINT, sighandler);
     signal(SIGTERM, sighandler);
+    signal(SIGPIPE, SIG_IGN);
     // This must be done before process_security_init(), because server_port
     // can be a privileged port, ssl_init use files from the filesystem.
     if (client_s_family==AF_INET)
@@ -503,6 +526,7 @@ int main(int argc, char **argv) {
 			} else {
 			    if (errno!=EAGAIN) {
 				debug("write() errno: %d", errno);
+				cn->csbuf_b=cn->csbuf_e=cn->csbuf;
 				cn->stat=cs_closing;
 			    }
 			}
@@ -511,12 +535,12 @@ int main(int argc, char **argv) {
 //			    if (cn->c_end_req) conn_close(cn);
 			}
 		    }
-		    if (cn->stat==cs_closing && cn->csbuf_e==cn->csbuf_b) conn_close(cn);
+		    if (cn->stat==cs_closing && cn->csbuf_e==cn->csbuf_b) conn_close_client(cn);
 		default:;
 	    }
-	    if (cn->stat==cs_connected) {
+	    if (cn->stat==cs_connected || cn->stat==cs_closing) {
 		// Check if data is available on server side
-		if ((l=sc_buflen-(cn->scbuf_e-cn->scbuf))) {
+		if ((l=sc_buflen-(cn->scbuf_e-cn->scbuf)) && cn->client_sock>=0) {
 		    i=read(cn->client_sock, cn->scbuf_e, l);
 		    if (!i) { // End of connection
 			cn->stat=cs_closing; event=1;
@@ -530,7 +554,7 @@ int main(int argc, char **argv) {
 		    } else cn->scbuf_e+=i;
 		}
 		// Send buffered data to client
-		if ((l=cn->scbuf_e-cn->scbuf_b)>0) {
+		if ((l=cn->scbuf_e-cn->scbuf_b)>0 && cn->server_sock>=0) {
 		    i=SSL_write(cn->ssl_conn, cn->scbuf_b, l);
 		    if (i>0) debug("transfer: buf=%d, b=%d, l=%d, i=%d", cn->scbuf,
 			    cn->scbuf_b, l, i);
@@ -538,6 +562,7 @@ int main(int argc, char **argv) {
 			cn->scbuf_b+=i; event=1;
 		    } else if (errno!=EAGAIN) {
 			debug("SSL_write() errno: %d", errno);
+			cn->scbuf_b=cn->scbuf_e=cn->scbuf;
 			event=1;
 		    }
 		    if (cn->scbuf_b==cn->scbuf_e) {
@@ -545,8 +570,7 @@ int main(int argc, char **argv) {
 //			if (cn->s_end_req) conn_close(cn);
 		    }
 		}
-		if (cn->stat==cs_closing && cn->csbuf_e==cn->csbuf_b
-			&& cn->scbuf_e==cn->scbuf_b) conn_close(cn);
+		if (cn->stat==cs_closing && cn->scbuf_e==cn->scbuf_b) conn_close_server(cn);
 	    }
 	}
 	if (!event) usleep(100);
