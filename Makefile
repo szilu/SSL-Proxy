@@ -13,9 +13,9 @@ r_tag:
 	cvs tag -c -R rel-$(MAJOR_VERSION)_$(MINOR_VERSION)_$(MICRO_VERSION)
 
 r_tgz:
-	cvs -d :ext:szilu@cvs.sourceforge.net:/cvsroot/sslproxy export -r rel-$(MAJOR_VERSION)_$(MINOR_VERSION)_$(MICRO_VERSION) -d ssl_proxy-$(VERSION) sslproxy
-	tar cvzf ../ssl_proxy-$(VERSION).tgz ssl_proxy-$(VERSION)
-	rm -rf ssl_proxy-$(VERSION)
+	cvs -d :ext:szilu@cvs.sourceforge.net:/cvsroot/sslproxy export -r rel-$(MAJOR_VERSION)_$(MINOR_VERSION)_$(MICRO_VERSION) -d sslproxy-$(VERSION) sslproxy
+	tar cvzf ../sslproxy-$(VERSION).tgz sslproxy-$(VERSION)
+	rm -rf sslproxy-$(VERSION)
 
 release: r_tag r_tgz
 
