@@ -104,7 +104,7 @@ void debug(char *format,...) {
     }
 }
 
-void log(int level, const char *cls, const char *format,...) {
+void plog(int level, const char *cls, const char *format,...) {
     char str[8192];
     va_list args;
     va_start(args, format);
@@ -157,7 +157,7 @@ static RSA *tmp_rsa_cb(SSL *ssl, int export, int key_len) {
     if (export) {
 	rsa=RSA_generate_key(key_len, RSA_F4, NULL, NULL);
     } else {
-	log(LOG_ERR, "tmp_rsa_callback()", "Export not set");
+	plog(LOG_ERR, "tmp_rsa_callback()", "Export not set");
     }
     return rsa;
 }
@@ -245,7 +245,7 @@ int conn_accept(void) {
     debug("conn_accept(): Client connected");
     for (i=0; i<max_conn && conn[i].stat!=cs_disconnected; i++);
     if (i==max_conn) {
-	log(LOG_ERR, "accept()", "Internal error");
+	plog(LOG_ERR, "accept()", "Internal error");
 	close(s);
 	return 0;
     }
@@ -256,13 +256,13 @@ int conn_accept(void) {
     conn[i].ssl_conn=SSL_new(server_ssl_ctx);
     SSL_set_fd(conn[i].ssl_conn, conn[i].server_sock);
     if (!SSL_use_RSAPrivateKey(conn[i].ssl_conn, ssl_private_key)) {
-	log(LOG_ERR, "accept()", "Error reading private key");
+	plog(LOG_ERR, "accept()", "Error reading private key");
 	SSL_free(conn[i].ssl_conn);
 	close(conn[i].server_sock);
 	return -1;
     }
     if (!SSL_use_certificate(conn[i].ssl_conn, ssl_public_cert)) {
-	log(LOG_ERR, "accept()", "Error reading public certificate");
+	plog(LOG_ERR, "accept()", "Error reading public certificate");
 	SSL_free(conn[i].ssl_conn);
 	close(conn[i].server_sock);
 	return -1;
@@ -286,11 +286,11 @@ int conn_ssl_accept(Conn *conn) {
 	if (err==SSL_ERROR_WANT_READ || err==SSL_ERROR_WANT_WRITE) {
 	    return 1;
 	} else {
-	    log(LOG_ERR, "accept()", "Access failed: %.256s", ERR_error_string(err, NULL));
+	    plog(LOG_ERR, "accept()", "Access failed: %.256s", ERR_error_string(err, NULL));
 	}
 
 //	if ((err=ERR_get_error())) {
-//	    log(LOG_ERR, "accept()", "Access failed: %.256s", ERR_error_string(err, NULL));
+//	    plog(LOG_ERR, "accept()", "Access failed: %.256s", ERR_error_string(err, NULL));
 //	} else if (SSL_want(conn->ssl_conn)>1) return 0;;
 	debug("SSL_accept: disconnected.");
 	SSL_free(conn->ssl_conn);
@@ -302,14 +302,14 @@ int conn_ssl_accept(Conn *conn) {
     // Connect to server (client side)
     conn->client_sock=socket(client_s_family, SOCK_STREAM, 0);
     if (conn->client_sock<0) {
-	log(LOG_ERR, "socket()", sys_errlist[errno]);
+	plog(LOG_ERR, "socket()", strerror(errno));
 	SSL_free(conn->ssl_conn);
 	close(conn->server_sock);
 	conn->stat=cs_disconnected;
 	return -1;
     }
     if (connect(conn->client_sock, client_sa, client_sa_len)<0) {
-	log(LOG_ERR, "connect()", sys_errlist[errno]);
+	plog(LOG_ERR, "connect()", strerror(errno));
 	close(conn->client_sock);
 	SSL_free(conn->ssl_conn);
 	close(conn->server_sock);
@@ -354,7 +354,7 @@ void sighandler(int signum) {
     switch (signum) {
 	case SIGINT:
 	case SIGTERM:
-	    log(LOG_NOTICE, "signal", "Interrupt/terminate");
+	    plog(LOG_NOTICE, "signal", "Interrupt/terminate");
 	    server_done();
 	    // If it's possible to remove pid file, try it..
 	    // It's not guaranteed to succeed, because of setuid
@@ -478,10 +478,10 @@ int main(int argc, char **argv) {
 
     openlog("sslproxy", LOG_PID, LOG_DAEMON);
     if (client_s_family==AF_INET)
-	log(LOG_NOTICE, "init", "version " VERSION " started (family=INET host=%.256s port=%d).",
+	plog(LOG_NOTICE, "init", "version " VERSION " started (family=INET host=%.256s port=%d).",
 		client_addr, client_port);
     else
-	log(LOG_NOTICE, "init", "version " VERSION " started (family=UNIX path=%.256s).",
+	plog(LOG_NOTICE, "init", "version " VERSION " started (family=UNIX path=%.256s).",
 		client_addr);
 
     while (1) {
