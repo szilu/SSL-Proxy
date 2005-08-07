@@ -86,7 +86,7 @@ If you would like to use maximal security level, you can use:
 
 How to report bugs
 ==================
-To report a bug, send mail to szilu@revai.hu.
+To report a bug, send mail to sslproxy-users@lists.sourceforge.net.
 In the mail include:
 
 * The version
@@ -103,13 +103,16 @@ In the mail include:
 
 * The text that was printed out (Debug information).
 
+You can also use tha SourceForge bugtracking system at
+    http://sourceforge.net/tracker/?group_id=21298
+
 Patches
 =======
 
-Patches can be sent to Szilu <szilu@revai.hu>.
+Patches can be sent to tha sslproxy-users@lists.sourceforge.net mailing list.
 Please include your name and email address.
 
 If the patch fixes a bug, it is usually a good idea to include
 all the information described in "How to Report Bugs".
 
-    Szilard Hajba <szilu@revai.hu>
+    Szilard Hajba <szilu@symbion.hu>
