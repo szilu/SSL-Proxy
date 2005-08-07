@@ -16,7 +16,7 @@
  * Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#define VERSION "1.0.2"
+#define VERSION "1.0.3"
 #define BUFLEN 8192
 #define MAX_CONNECTION 32
 //#define CS_BUFFER_LEN 2
@@ -287,6 +287,7 @@ int conn_ssl_accept(Conn *conn) {
 	    return 1;
 	} else {
 	    plog(LOG_ERR, "accept()", "Access failed: %.256s", ERR_error_string(err, NULL));
+	    ERR_print_errors_fp(stderr);
 	}
 
 //	if ((err=ERR_get_error())) {
