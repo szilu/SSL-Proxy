@@ -1,5 +1,5 @@
-/* Symbion SSL Proxy 1.0.2
- * Copyright (C) 2000-2004 Szilard Hajba
+/* Symbion SSL Proxy
+ * Copyright (C) 2000-2005 Szilard Hajba
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -16,8 +16,7 @@
  * Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#define VERSION "1.0.3"
-#define BUFLEN 8192
+#define VERSION "1.0.4"
 #define MAX_CONNECTION 32
 //#define CS_BUFFER_LEN 2
 //#define SC_BUFFER_LEN 40
@@ -370,13 +369,14 @@ int main(int argc, char **argv) {
     int c, pid, i;
     char *p1, *p2;
 
-    while ((c=getopt(argc, argv, "hdfm:s:c:C:K:u:r:")) != EOF)
+    while ((c=getopt(argc, argv, "hdfm:s:c:C:K:u:r:U:D:")) != EOF)
 	switch (c) {
 	    case 'h':
 		fprintf(stderr, "Symbion SSL proxy " VERSION "\n"
 			"usage: %.256s [-d] [-f] [-s <listen address>] [-c <client address>]\n"
 			"              [-m <max connection>] [-C <certificate file>] [-K <key file>]\n"
 			"              [-u <user/uid>] [-r <chroot dir>]\n"
+			"              [-U <upward buffer (default 2048)>] [-D <downward buffer (default 8192)>]\n"
 			"        <lister address> = [<host>:]<port>\n"
 			"        <client address> = [<host>:]<port> | unix:<path>\n", argv[0]);
 		fprintf(stderr, "       %.256s -h\n", argv[0]);
@@ -428,6 +428,12 @@ int main(int argc, char **argv) {
 		break;
 	    case 'r':
 		chroot_dir=optarg;
+		break;
+	    case 'U':
+		cs_buflen=atoi(optarg);
+		break;
+	    case 'D':
+		sc_buflen=atoi(optarg);
 		break;
 	}
     debug("Symbion SSL proxy " VERSION);

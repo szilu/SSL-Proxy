@@ -59,9 +59,14 @@ options.
 				initialization.
 	-r <chroot dir>		Chroot to the specified directory after
 				initialization.
+    Buffer size options:
+	-U <upward buffer>	The size of the buffer used for
+				client -> server data transfer.
+	-D <downward buffer>	The size of the buffer used for
+				server -> client data transfer.
 Defaults:
     # ssl_proxy -s 443 -c localhost:80 -m 32 -C /etc/symbion/cert.pem \
-	    -K /etc/symbion/key.pem
+	    -K /etc/symbion/key.pem -U 2048 -D 8192
 
 Notes
 =====
