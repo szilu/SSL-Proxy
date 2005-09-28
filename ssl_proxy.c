@@ -62,8 +62,8 @@ struct passwd *pass;
 
 int server_socket;
 SSL_CTX *server_ssl_ctx;
-X509 *ssl_public_cert;
-RSA *ssl_private_key;
+//X509 *ssl_public_cert;
+//RSA *ssl_private_key;
 
 int client_s_family=AF_INET;
 struct sockaddr *client_sa;
@@ -162,7 +162,7 @@ static RSA *tmp_rsa_cb(SSL *ssl, int export, int key_len) {
 }
 
 void server_ssl_init(void) {
-    FILE *f;
+//    FILE *f;
     SSLeay_add_ssl_algorithms();
     SSL_load_error_strings();
     server_ssl_ctx=SSL_CTX_new(SSLv23_server_method());
@@ -171,33 +171,16 @@ void server_ssl_init(void) {
 	exit(1);
     }
 
-    // Load certificate file
-    f=fopen(cert_file, "r");
-    if (!f)  {
-	fprintf(stderr,"cannot open public cert file \"%.256s\"\n",cert_file);
-	exit(1);
-    }
-    ssl_public_cert=X509_new();
-    if (!PEM_read_X509(f, &ssl_public_cert, NULL, NULL))  {
-	fprintf(stderr,"error reading public cert: %.256s\n",
+    if (!SSL_CTX_use_certificate_chain_file(server_ssl_ctx, cert_file)) {
+	fprintf(stderr,"error reading certificate: %.256s\n",
 		ERR_error_string(ERR_get_error(), NULL));
 	exit(1);
     }
-    fclose(f);
-
-    // Load key file
-    f=fopen(key_file, "r");
-    if (!f)  {
-	fprintf(stderr,"cannot open private key file \"%.256s\"\n",key_file);
-	exit(1);
-    }
-    ssl_private_key=RSA_new();
-    if (!PEM_read_RSAPrivateKey(f, &ssl_private_key, NULL, NULL))  {
+    if (!SSL_CTX_use_PrivateKey_file(server_ssl_ctx, key_file, SSL_FILETYPE_PEM)) {
 	fprintf(stderr,"error reading private key: %.256s\n",
 		ERR_error_string(ERR_get_error(), NULL));
 	exit(1);
     }
-    fclose(f);
     SSL_CTX_set_tmp_rsa_callback(server_ssl_ctx, tmp_rsa_cb);
 //    SSL_CTX_set_session_cache_mode(server_ssl_ctx, SSL_SESS_CACHE_OFF);
 }
@@ -254,18 +237,18 @@ int conn_accept(void) {
     conn[i].server_sa_len=server_sa_len;
     conn[i].ssl_conn=SSL_new(server_ssl_ctx);
     SSL_set_fd(conn[i].ssl_conn, conn[i].server_sock);
-    if (!SSL_use_RSAPrivateKey(conn[i].ssl_conn, ssl_private_key)) {
-	plog(LOG_ERR, "accept()", "Error reading private key");
-	SSL_free(conn[i].ssl_conn);
-	close(conn[i].server_sock);
-	return -1;
-    }
-    if (!SSL_use_certificate(conn[i].ssl_conn, ssl_public_cert)) {
-	plog(LOG_ERR, "accept()", "Error reading public certificate");
-	SSL_free(conn[i].ssl_conn);
-	close(conn[i].server_sock);
-	return -1;
-    }
+//    if (!SSL_use_RSAPrivateKey(conn[i].ssl_conn, ssl_private_key)) {
+//	plog(LOG_ERR, "accept()", "Error reading private key");
+//	SSL_free(conn[i].ssl_conn);
+//	close(conn[i].server_sock);
+//	return -1;
+//    }
+//    if (!SSL_use_certificate(conn[i].ssl_conn, ssl_public_cert)) {
+//	plog(LOG_ERR, "accept()", "Error reading public certificate");
+//	SSL_free(conn[i].ssl_conn);
+//	close(conn[i].server_sock);
+//	return -1;
+//    }
     SSL_set_verify(conn[i].ssl_conn, 0, NULL);
     BIO_set_nbio(SSL_get_rbio(conn[i].ssl_conn), 0);
     BIO_set_nbio(SSL_get_wbio(conn[i].ssl_conn), 0);
