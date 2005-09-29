@@ -1,8 +1,15 @@
+2005-09-28 17:58:31    Szilard Hajba <szilu@symbion.hu>
+
+	* Improved certificate handling (chained certificates are now supported)
+	* Powered by logo
+	* Release 1.0.5
+
 2005-08-07 09:19:53    Szilard Hajba <szilu@symbion.hu>
 
 	* More error information on SSL protocol errors during SSL_accept()
 	* README: Report bugs to the mailing list
 	* Added -U, -D options (buffer size)
+	* Release 1.0.4
 
 2005-04-08 11:08:45    Szilard Hajba <szilu@symbion.hu>
 
