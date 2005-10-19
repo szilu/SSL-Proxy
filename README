@@ -25,7 +25,7 @@ Key generation
 ==============
 SSL Proxy can not generate keys, use ssleay's req utility to do it:
 	# mkdir /etc/symbion; cd /etc/symbion
-	# ssleay req -nodes -new -x509 -out cert.pem -keyout key.pem
+	# openssl req -days 365 -nodes -new -x509 -out cert.pem -keyout key.pem
 	# chmod go-rwx key.pem
 
 Usage
