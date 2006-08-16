@@ -71,7 +71,7 @@ struct sockaddr_in client_sa_in;
 struct sockaddr_un client_sa_un;
 int client_sa_len;
 
-typedef enum {cs_disconnected, cs_accept, cs_connected, cs_closing} ConnStatus;
+typedef enum {cs_disconnected, cs_accept, cs_connecting, cs_connected, cs_closing} ConnStatus;
 typedef struct {
     ConnStatus stat;			// Status of the connection
     int server_sock;			// Server side socket id
@@ -204,7 +204,7 @@ void client_init(char *addr, int port) {
 	if (addr) {
 	    if (strlen(addr)>=sizeof(client_sa_un.sun_path)) {
 		fprintf(stderr, "client_init(): client address too long (allowed: %d)\n",
-			sizeof(client_sa_un.sun_path));
+			(int)sizeof(client_sa_un.sun_path));
 		exit(1);
 	    } else strcpy(client_sa_un.sun_path, addr);
 	} else {
@@ -291,16 +291,17 @@ int conn_ssl_accept(Conn *conn) {
 	conn->stat=cs_disconnected;
 	return -1;
     }
+    fcntl(conn->client_sock, F_SETFL, O_NONBLOCK);
+    conn->stat=cs_connecting;
     if (connect(conn->client_sock, client_sa, client_sa_len)<0) {
+	if (errno==EINPROGRESS) return 0;
 	plog(LOG_ERR, "connect()", strerror(errno));
 	close(conn->client_sock);
 	SSL_free(conn->ssl_conn);
 	close(conn->server_sock);
 	conn->stat=cs_disconnected;
 	return -1;
-    }
-    fcntl(conn->client_sock, F_SETFL, O_NONBLOCK);
-    conn->stat=cs_connected;
+    } else conn->stat=cs_connected;
     return 0;
 }
 
@@ -489,6 +490,17 @@ int main(int argc, char **argv) {
 		    i=conn_ssl_accept(cn);
 //		    cn->c_end_req=0; cn->s_end_req=0;
 		    event|=(i==0);
+		    break;
+		case cs_connecting:
+		    if (connect(cn->client_sock, client_sa, client_sa_len)<0) {
+			if (errno==EALREADY) break;
+perror("connecting()");
+			plog(LOG_ERR, "connect()", strerror(errno));
+			close(cn->client_sock);
+			SSL_free(cn->ssl_conn);
+			close(cn->server_sock);
+			cn->stat=cs_disconnected;
+		    } else cn->stat=cs_connected;
 		    break;
 		case cs_connected:
 		    // Check if data is available on client side

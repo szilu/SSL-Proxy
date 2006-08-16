@@ -1,3 +1,8 @@
+2006-08-16 11:30:36    Szilard Hajba <szilu@symbion.hu>
+
+	* Some cleanup in the client side connection code
+	* Type conversion to compile cleanly on OS X
+
 2005-09-28 17:58:31    Szilard Hajba <szilu@symbion.hu>
 
 	* Improved certificate handling (chained certificates are now supported)
