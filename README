@@ -40,13 +40,15 @@ options.
 	-f			Do not detach from the terminal and run in the
 				forground. Useful if you want to run SSL Proxy
 				from Symbion Daemon Tool.
+	-i			Provide some info to the server about the
+				client (see below)
 	-s [<server host>:]<server port>
 				Specify the port, which SSL Proxy will listen
 				on (or address to bind to a specific interface).
 	-c [<client host>:]<client port>
 				Specify the TCP port, which SSL Proxy will
 				connect to as a client (The forwarding port).
-	-c unix:<client port>
+	-c unix:<socket path>
 				Specify the UNIX domain socket, which SSL Proxy
 				will connect to as a client (The forwarding port).
 	-m <max connection>	SSL Proxy will accept maximum this number of
@@ -79,6 +81,44 @@ Also note that if you use UNIX domain sockets with the -u (setuid) feature,
 then the user must have read and write permission to the socket file.
 The TCP sockets has no similar limitations, because they are not associated
 with filesystem objects.
+
+The file provided with the -v option can contain several CA certificates in
+PEM format. If you use the -V (certificate directory) option, then each file
+have to contain exactly ONE certificate. The files are looked up by the CA
+subject name hash value, which must be available. You can create symlinks with
+the c_rehash utility, contained in the openssl package.
+
+Client info feature
+===================
+SSL Proxy can provide client information to the server in a special format.
+
+This is a new feature in version 1.0.7, so I do not know of any server software
+that can use this information except my own special purpose software. If I
+receive information about any software available that uses this information, I
+will publicate it on our website, www.symbion.hu.
+
+The usage is very simple. You provide the -i option to SSL Proxy. When a
+client connects, SSL Proxy connects to the server the usual way. But before
+the data sent by the client is forwarded to the server, SSL Proxy sends an
+information line to the server. This is an example of a HTTPS connection with
+the -i option:
+
+-----8<-----
+szilu@maia:[~]$ nc -l -p 8080
+#@ip=127.0.0.1 port=57223
+GET / HTTP/1.1
+Host: localhost:8443
+User-Agent: Links (2.1pre37; Linux 2.6.27-11-eeepc i686; 80x24)
+Accept: */*
+Accept-Encoding: gzip, deflate
+...
+----->8-----
+
+As you can see, an extra line beginning with '#@' is sent to the server. It
+contains the IP address and the TCP port of the client and optionally the
+common name (cn) of the client, if it has provided a certificate.
+
+This information can be used for example for logging or access control purposes.
 
 Examples
 ========
