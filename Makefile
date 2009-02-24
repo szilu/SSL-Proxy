@@ -9,7 +9,10 @@ all: $(TARGET)
 clean:
 	rm -f $(TARGET) core *.o
 
-release: r_tag r_tgz
+release: r_tgz
+
+r_tgz:
+	git-archive --format=tar --prefix=sslproxy-$(VERSION)/ HEAD |gzip -9 >sslproxy-$(VERSION).tar.gz
 
 $(TARGET): $(OBJS)
 	$(LD) -o $@ $(OBJS) $(LDOPTS)
