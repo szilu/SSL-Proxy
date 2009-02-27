@@ -575,7 +575,7 @@ perror("connecting()");
 			debug("Connection negotiated");
 			if (info_flag) {
 			    struct sockaddr_in client_addr;
-			    unsigned int client_addr_len;
+			    unsigned int client_addr_len=sizeof(client_addr);
 			    X509 *cert;
 			    X509_NAME *xn=NULL;
 			    char peer_cn[256]="";
@@ -590,7 +590,7 @@ perror("connecting()");
 			    conn->csbuf_e+=snprintf(conn->csbuf_b, cs_buflen,
 				    "#@ip=%s port=%d%s%s%s\r\n",
 				    inet_ntoa(client_addr.sin_addr),
-				    client_addr.sin_port, xn?" cn='":"", peer_cn, xn?"'":"");
+				    htons(client_addr.sin_port), xn?" cn='":"", peer_cn, xn?"'":"");
 			    debug("INFO: %s", conn->csbuf);
 			}
 		    }
