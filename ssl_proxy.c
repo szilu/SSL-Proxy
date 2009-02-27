@@ -311,6 +311,7 @@ int conn_ssl_accept(Conn *conn) {
 	debug("SSL_accept: disconnected.");
 	SSL_free(conn->ssl_conn);
 	close(conn->server_sock);
+	conn->server_sock=conn->client_sock=0;
 	conn->stat=cs_disconnected;
 	return -1;
 /*
@@ -337,6 +338,7 @@ int conn_ssl_accept(Conn *conn) {
 	plog(LOG_ERR, "socket()", strerror(errno));
 	SSL_free(conn->ssl_conn);
 	close(conn->server_sock);
+	conn->server_sock=conn->client_sock=0;
 	conn->stat=cs_disconnected;
 	return -1;
     }
@@ -579,19 +581,19 @@ perror("connecting()");
 			    X509 *cert;
 			    X509_NAME *xn=NULL;
 			    char peer_cn[256]="";
-			    getpeername(conn->server_sock,
+			    getpeername(cn->server_sock,
 				    (struct sockaddr *)&client_addr,
 				    &client_addr_len);
-			    cert=SSL_get_peer_certificate(conn->ssl_conn);
+			    cert=SSL_get_peer_certificate(cn->ssl_conn);
 			    if (cert) {
 				xn=X509_get_subject_name(cert);
 				X509_NAME_get_text_by_NID(xn, NID_commonName, peer_cn, 256);
 			    }
-			    conn->csbuf_e+=snprintf(conn->csbuf_b, cs_buflen,
+			    cn->csbuf_e+=snprintf(cn->csbuf_b, cs_buflen,
 				    "#@ip=%s port=%d%s%s%s\r\n",
 				    inet_ntoa(client_addr.sin_addr),
 				    htons(client_addr.sin_port), xn?" cn='":"", peer_cn, xn?"'":"");
-			    debug("INFO: %s", conn->csbuf);
+			    debug("INFO: %p %d %s", cn, cn->server_sock, cn->csbuf);
 			}
 		    }
 		    break;
