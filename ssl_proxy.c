@@ -52,6 +52,7 @@
 int debug_flag=0;
 int fg_flag=0;
 int info_flag=0;
+int log_flag=0;
 int max_conn=MAX_CONNECTION;
 int cs_buflen=CS_BUFFER_LEN, sc_buflen=SC_BUFFER_LEN;
 char *server_addr="0.0.0.0";
@@ -96,7 +97,8 @@ Conn *conn=NULL;
 void conn_close_client(Conn *conn);
 void conn_close_server(Conn *conn);
 
-void debug(char *format,...) {
+void debug(char *format,...)
+{
     if (debug_flag) {
 	va_list args;
 	va_start(args, format);
@@ -106,14 +108,45 @@ void debug(char *format,...) {
     }
 }
 
-void plog(int level, const char *cls, const char *format,...) {
+void plog(int level, const char *format,...)
+{
     char str[8192];
     va_list args;
     va_start(args, format);
     vsprintf(str, format, args);
     va_end(args);
-    syslog(level, "%.256s: %.256s\n", cls, str);
-    if (debug_flag) debug("LOG: %.256s: %.256s", cls, str);
+    syslog(level, "%s\n", str);
+    if (debug_flag) debug("LOG: %.256s", str);
+}
+
+void plog_ssl_error(SSL *ssl_conn, int ret, char *cls, int sock)
+{
+    int err=SSL_get_error(ssl_conn, ret);
+    switch (err) {
+	case SSL_ERROR_NONE:
+	case SSL_ERROR_WANT_READ:
+	case SSL_ERROR_WANT_WRITE:
+	case SSL_ERROR_WANT_CONNECT:
+	case SSL_ERROR_WANT_ACCEPT:
+	    break;
+	case SSL_ERROR_SSL:
+	    plog(LOG_ERR, "ERROR @%d %s: %s", sock, cls,
+		    ERR_error_string(ERR_get_error(), NULL));
+	    break;
+	case SSL_ERROR_SYSCALL:
+	    if (!ret) {
+		plog(LOG_ERR, "ERROR @%d %s: Unexpected EOF", sock, cls);
+	    } else {
+		plog(LOG_ERR, "ERROR @%d %s: %s (errno=%d)", sock, cls, strerror(errno), errno);
+	    }
+	    break;
+	case SSL_ERROR_ZERO_RETURN:
+//	    plog(LOG_ERR, "ERROR @%d %s: Zero return", sock, cls);
+	    break;
+	default:
+	    plog(LOG_ERR, "ERROR @%d %s: Unknown SSL error (SSL_get_error()=%d)", sock, cls, err);
+	    break;
+    }
 }
 
 void _sleep()
@@ -123,7 +156,8 @@ void _sleep()
 }
 
 // ============================================== Server
-int server_init(char *addr, int port, int maxconn) {
+int server_init(char *addr, int port, int maxconn)
+{
     struct sockaddr_in server;
     long ipaddr;
 
@@ -146,7 +180,8 @@ int server_init(char *addr, int port, int maxconn) {
     return server_socket;
 }
 
-void server_done(void) {
+void server_done(void)
+{
     int ci;
     shutdown(server_socket, 2);
     _sleep();
@@ -159,13 +194,14 @@ void server_done(void) {
 }
 
 // ============================================== Server SSL
-static RSA *tmp_rsa_cb(SSL *ssl, int export, int key_len) {
+static RSA *tmp_rsa_cb(SSL *ssl, int export, int key_len)
+{
     static RSA *rsa=NULL; 
     debug("Generating new RSA key.. (ex=%d, kl=%d)", export, key_len);
     if (export) {
 	rsa=RSA_generate_key(key_len, RSA_F4, NULL, NULL);
     } else {
-	plog(LOG_ERR, "tmp_rsa_callback()", "Export not set");
+	plog(LOG_ERR, "ERROR tmp_rsa_callback(): Export not set");
     }
     return rsa;
 }
@@ -176,7 +212,8 @@ static int verify_callback(int preverify_ok, X509_STORE_CTX *ctx)
     return preverify_ok;
 }
 
-void server_ssl_init(void) {
+void server_ssl_init(void)
+{
 //    FILE *f;
     SSLeay_add_ssl_algorithms();
     SSL_load_error_strings();
@@ -219,7 +256,8 @@ void server_ssl_init(void) {
 }
 
 // ============================================== CLient
-void client_init(char *addr, int port) {
+void client_init(char *addr, int port)
+{
     if (port) { // TCP connection
 	struct hostent *hp;
 	client_sa_in.sin_family=AF_INET;
@@ -252,7 +290,8 @@ void client_init(char *addr, int port) {
 // ============================================== Connection
 struct sockaddr_in server_sa;
 unsigned int server_sa_len;
-int conn_accept(void) {
+int conn_accept(void)
+{
     int i;
     // Initialize SSL connection (server side)
     int s=accept(server_socket, (struct sockaddr *)&server_sa, &server_sa_len);
@@ -260,7 +299,7 @@ int conn_accept(void) {
     debug("conn_accept(): Client connected");
     for (i=0; i<max_conn && conn[i].stat!=cs_disconnected; i++);
     if (i==max_conn) {
-	plog(LOG_ERR, "accept()", "Internal error");
+	plog(LOG_ERR, "ERROR accept(): No more connections allowed");
 	close(s);
 	return 0;
     }
@@ -270,19 +309,6 @@ int conn_accept(void) {
     conn[i].server_sa_len=server_sa_len;
     conn[i].ssl_conn=SSL_new(server_ssl_ctx);
     SSL_set_fd(conn[i].ssl_conn, conn[i].server_sock);
-//    if (!SSL_use_RSAPrivateKey(conn[i].ssl_conn, ssl_private_key)) {
-//	plog(LOG_ERR, "accept()", "Error reading private key");
-//	SSL_free(conn[i].ssl_conn);
-//	close(conn[i].server_sock);
-//	return -1;
-//    }
-//    if (!SSL_use_certificate(conn[i].ssl_conn, ssl_public_cert)) {
-//	plog(LOG_ERR, "accept()", "Error reading public certificate");
-//	SSL_free(conn[i].ssl_conn);
-//	close(conn[i].server_sock);
-//	return -1;
-//    }
-//    SSL_set_verify(conn[i].ssl_conn, 0, NULL);
     BIO_set_nbio(SSL_get_rbio(conn[i].ssl_conn), 0);
     BIO_set_nbio(SSL_get_wbio(conn[i].ssl_conn), 0);
     fcntl(conn[i].server_sock, F_SETFL, O_NONBLOCK);
@@ -292,50 +318,29 @@ int conn_accept(void) {
     return conn[i].server_sock;
 }
 
-int conn_ssl_accept(Conn *conn) {
+int conn_ssl_accept(Conn *conn)
+{
     int ret=SSL_accept(conn->ssl_conn);
 //    debug("SSL_accept: %d, SSL_want=%d", ret, SSL_want(conn->ssl_conn));
     if (ret<=0) {
 	unsigned long err=SSL_get_error(conn->ssl_conn, ret);
-//	debug("SSL_accept: error:%d", err);
 	if (err==SSL_ERROR_WANT_READ || err==SSL_ERROR_WANT_WRITE) {
 	    return 1;
-	} else {
-	    plog(LOG_ERR, "accept()", "Accept failed: %.256s", ERR_error_string(err, NULL));
-	    ERR_print_errors_fp(stderr);
 	}
 
-//	if ((err=ERR_get_error())) {
-//	    plog(LOG_ERR, "accept()", "Access failed: %.256s", ERR_error_string(err, NULL));
-//	} else if (SSL_want(conn->ssl_conn)>1) return 0;;
-	debug("SSL_accept: disconnected.");
+	plog_ssl_error(conn->ssl_conn, ret, "SSL_accept()", conn->server_sock);
+//	ERR_print_errors_fp(stderr);
 	SSL_free(conn->ssl_conn);
 	close(conn->server_sock);
 	conn->server_sock=conn->client_sock=0;
 	conn->stat=cs_disconnected;
 	return -1;
-/*
-    } else if (ret==1) {
-	// Successfull negotiation
-	X509 *peer;
-	if (!(peer=SSL_get_peer_certificate(conn->ssl_conn))
-		|| SSL_get_verify_result(conn->ssl_conn)!=X509_V_OK) {
-	    unsigned long err=SSL_get_error(conn->ssl_conn, ret);
-	    plog(LOG_ERR, "accept()", "SSL handshake: %.256s", ERR_error_string(err, NULL));
-	    ERR_print_errors_fp(stderr);
-	    debug("SSL_accept: disconnected.");
-	    SSL_free(conn->ssl_conn);
-	    close(conn->server_sock);
-	    conn->stat=cs_disconnected;
-	    return -1;
-	}
-*/
     }
 
     // Connect to server (client side)
     conn->client_sock=socket(client_s_family, SOCK_STREAM, 0);
     if (conn->client_sock<0) {
-	plog(LOG_ERR, "socket()", strerror(errno));
+	plog(LOG_ERR, "ERROR socket(): %s", strerror(errno));
 	SSL_free(conn->ssl_conn);
 	close(conn->server_sock);
 	conn->server_sock=conn->client_sock=0;
@@ -344,41 +349,11 @@ int conn_ssl_accept(Conn *conn) {
     }
     fcntl(conn->client_sock, F_SETFL, O_NONBLOCK);
     conn->stat=cs_connecting;
-/*
-    ret=connect(conn->client_sock, client_sa, client_sa_len);
-    if (ret<0) {
-	if (errno==EINPROGRESS) return 0;
-	plog(LOG_ERR, "connect()", strerror(errno));
-	close(conn->client_sock);
-	SSL_free(conn->ssl_conn);
-	close(conn->server_sock);
-	conn->stat=cs_disconnected;
-	return -1;
-    } else {
-	conn->stat=cs_connected;
-	debug("Connection negotiated");
-	if (info_flag) {
-	    conn->csbuf_e+=snprintf(conn->csbuf_b, cs_buflen, "#@ip=%s \r\n", "1.1.1.1");
-	    debug("INFO: %s", conn->csbuf);
-	}
-    }
-*/
     return 0;
 }
 
-/*
-void conn_close(Conn *conn) {
-    debug("conn_close(): s=%d", conn->server_sock);
-    shutdown(conn->client_sock, 2);
-    close(conn->client_sock);
-    SSL_free(conn->ssl_conn);
-    shutdown(conn->server_sock, 2);
-    close(conn->server_sock);
-    conn->stat=cs_disconnected;
-}
-*/
-
-void conn_close_client(Conn *conn) {
+void conn_close_client(Conn *conn)
+{
     debug("conn_close_client(): s=%d", conn->client_sock);
     shutdown(conn->client_sock, 2);
     close(conn->client_sock);
@@ -386,8 +361,10 @@ void conn_close_client(Conn *conn) {
     if (conn->server_sock==-1) conn->stat=cs_disconnected;
 }
 
-void conn_close_server(Conn *conn) {
+void conn_close_server(Conn *conn)
+{
     debug("conn_close_server(): s=%d", conn->server_sock);
+    if (log_flag) plog(LOG_INFO, "DISCONNECT @%d", conn->server_sock);
     SSL_free(conn->ssl_conn);
     shutdown(conn->server_sock, 2);
     close(conn->server_sock);
@@ -395,11 +372,12 @@ void conn_close_server(Conn *conn) {
     if (conn->client_sock==-1) conn->stat=cs_disconnected;
 }
 
-void sighandler(int signum) {
+void sighandler(int signum)
+{
     switch (signum) {
 	case SIGINT:
 	case SIGTERM:
-	    plog(LOG_NOTICE, "signal", "Interrupt/terminate");
+	    plog(LOG_NOTICE, "SIGNAL Interrupt/terminate");
 	    server_done();
 	    // If it's possible to remove pid file, try it..
 	    // It's not guaranteed to succeed, because of setuid
@@ -409,16 +387,17 @@ void sighandler(int signum) {
     }
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
     FILE *pidfile;
     int c, pid, i;
     char *p1, *p2;
 
-    while ((c=getopt(argc, argv, "hdfim:s:c:C:K:u:r:v:V:U:D:")) != EOF)
+    while ((c=getopt(argc, argv, "hdfilm:s:c:C:K:u:r:v:V:U:D:")) != EOF)
 	switch (c) {
 	    case 'h':
 		fprintf(stderr, "Symbion SSL proxy " VERSION "\n"
-			"usage: %.256s [-d] [-f] [-i] [-s <listen address>] [-c <client address>]\n"
+			"usage: %.256s [-d] [-f] [-l] [-i] [-s <listen address>] [-c <client address>]\n"
 			"              [-m <max connection>] [-C <certificate file>] [-K <key file>]\n"
 			"              [-u <user/uid>] [-r <chroot dir>]\n"
 			"              [-v <trusted CA file>] [-V <trusted CA dir>]\n"
@@ -435,6 +414,9 @@ int main(int argc, char **argv) {
 		break;
 	    case 'i':
 		info_flag=1;
+		break;
+	    case 'l':
+		log_flag=1;
 		break;
 	    case 'm':
 		max_conn=atoi(optarg);
@@ -540,10 +522,10 @@ int main(int argc, char **argv) {
 
     openlog("sslproxy", LOG_PID, LOG_DAEMON);
     if (client_s_family==AF_INET)
-	plog(LOG_NOTICE, "init", "version " VERSION " started (family=INET host=%.256s port=%d).",
+	plog(LOG_NOTICE, "INIT Version " VERSION " started (family=INET host=%.256s port=%d).",
 		client_addr, client_port);
     else
-	plog(LOG_NOTICE, "init", "version " VERSION " started (family=UNIX path=%.256s).",
+	plog(LOG_NOTICE, "INIT Version " VERSION " started (family=UNIX path=%.256s).",
 		client_addr);
 
     while (1) {
@@ -566,48 +548,46 @@ int main(int argc, char **argv) {
 		    if (connect(cn->client_sock, client_sa, client_sa_len)<0) {
 			if (errno==EINPROGRESS) break;
 //			if (errno==EALREADY) break;
-perror("connecting()");
-			plog(LOG_ERR, "connect()", strerror(errno));
+			plog(LOG_ERR, "ERROR @%d connect(): %s", conn->server_sock, strerror(errno));
 			close(cn->client_sock);
 			SSL_free(cn->ssl_conn);
 			close(cn->server_sock);
 			cn->stat=cs_disconnected;
 		    } else {
-			cn->stat=cs_connected;
-			debug("Connection negotiated");
+			struct sockaddr_in client_addr;
+			unsigned int client_addr_len=sizeof(client_addr);
+			X509 *cert;
+			X509_NAME *xn=NULL;
+			char peer_cn[256]="";
+			getpeername(cn->server_sock,
+				(struct sockaddr *)&client_addr,
+				&client_addr_len);
+			cert=SSL_get_peer_certificate(cn->ssl_conn);
+			if (cert) {
+			    xn=X509_get_subject_name(cert);
+			    X509_NAME_get_text_by_NID(xn, NID_commonName, peer_cn, 256);
+			}
 			if (info_flag) {
-			    struct sockaddr_in client_addr;
-			    unsigned int client_addr_len=sizeof(client_addr);
-			    X509 *cert;
-			    X509_NAME *xn=NULL;
-			    char peer_cn[256]="";
-			    getpeername(cn->server_sock,
-				    (struct sockaddr *)&client_addr,
-				    &client_addr_len);
-			    cert=SSL_get_peer_certificate(cn->ssl_conn);
-			    if (cert) {
-				xn=X509_get_subject_name(cert);
-				X509_NAME_get_text_by_NID(xn, NID_commonName, peer_cn, 256);
-			    }
 			    cn->csbuf_e+=snprintf(cn->csbuf_b, cs_buflen,
 				    "#@ip=%s port=%d%s%s%s\r\n",
 				    inet_ntoa(client_addr.sin_addr),
 				    htons(client_addr.sin_port), xn?" cn='":"", peer_cn, xn?"'":"");
 			    debug("INFO: %p %d %s", cn, cn->server_sock, cn->csbuf);
 			}
+			if (log_flag) plog(LOG_INFO, "CONNECT @%d %s:%d%s%s%s",
+				cn->server_sock, inet_ntoa(client_addr.sin_addr), htons(client_addr.sin_port),
+				xn?" cn='":"", peer_cn, xn?"'":"");
+			cn->stat=cs_connected;
 		    }
 		    break;
 		case cs_connected:
 		    // Check if data is available on client side
 		    if ((l=cs_buflen-(cn->csbuf_e-cn->csbuf))) {
 			i=SSL_read(cn->ssl_conn, cn->csbuf_e, l);
-			if (!i) { // End of connection
-			    debug("Close request: %d", ci);
-			    cn->stat=cs_closing; event=1;
-//			    cn->c_end_req=1;
-			} else if (i<0) { // Error
+			if (i<=0) { // Error, or shutdown
 			    if (errno!=EAGAIN) {
-				debug("SSL_read() errno: %d", errno);
+				plog_ssl_error(cn->ssl_conn, i, "SSL_read()",
+					conn->server_sock);
 				cn->stat=cs_closing; event=1;
 //				cn->c_end_req=1;
 			    }
@@ -622,7 +602,8 @@ perror("connecting()");
 			    cn->csbuf_b+=i;
 			} else {
 			    if (errno!=EAGAIN) {
-				debug("write() errno: %d", errno);
+				plog(LOG_ERR, "ERROR @%d write(): %s",
+					conn->server_sock, strerror(errno));
 				cn->csbuf_b=cn->csbuf_e=cn->csbuf;
 				cn->stat=cs_closing;
 			    }
@@ -644,7 +625,8 @@ perror("connecting()");
 //			cn->s_end_req=1;
 		    } else if (i<0) { // Error
 			if (errno!=EAGAIN) {
-			    debug("read errno: %d", errno);
+			    plog(LOG_ERR, "ERROR @%d read(): %s",
+				    conn->server_sock, strerror(errno));
 			    cn->stat=cs_closing; event=1;
 //			    cn->s_end_req=1;
 			}
@@ -658,7 +640,8 @@ perror("connecting()");
 		    if (i>=0) {
 			cn->scbuf_b+=i; event=1;
 		    } else if (errno!=EAGAIN) {
-			debug("SSL_write() errno: %d", errno);
+			plog_ssl_error(cn->ssl_conn, i, "SSL_write()",
+				conn->server_sock);
 			cn->scbuf_b=cn->scbuf_e=cn->scbuf;
 			event=1;
 		    }
