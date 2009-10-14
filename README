@@ -56,6 +56,7 @@ options.
     SSL options:
 	-C <certificate file>	SSL Public Certificate file (see Key generation).
 	-K <key file>		SSL Private Key File (see Key generation).
+	-p <cipher list>	SSL cipher list
     Security options:
 	-u <user/uid>		Change real and effective UID to this after
 				initialization.

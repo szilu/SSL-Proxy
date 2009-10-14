@@ -60,6 +60,7 @@ int server_port=443;
 char *client_addr="localhost";
 int client_port=80;
 char *cert_file=PEM_DIR"/"CERT_FILE, *key_file=PEM_DIR"/"KEY_FILE;
+char *cipher_list="HIGH";
 char *chroot_dir=NULL, *set_uid=NULL;
 char *verify_ca_file=NULL, *verify_ca_dir=NULL;
 struct passwd *pass;
@@ -218,7 +219,7 @@ void server_ssl_init(void)
     SSLeay_add_ssl_algorithms();
     SSL_load_error_strings();
     server_ssl_ctx=SSL_CTX_new(SSLv23_server_method());
-    SSL_CTX_set_cipher_list(server_ssl_ctx, "HIGH");
+    SSL_CTX_set_cipher_list(server_ssl_ctx, cipher_list);
     if (!SSL_CTX_set_default_verify_paths(server_ssl_ctx))  {
 	fprintf(stderr, "cannot set default path\n");
 	exit(1);
@@ -393,13 +394,13 @@ int main(int argc, char **argv)
     int c, pid, i;
     char *p1, *p2;
 
-    while ((c=getopt(argc, argv, "hdfilm:s:c:C:K:u:r:v:V:U:D:")) != EOF)
+    while ((c=getopt(argc, argv, "hdfilm:s:c:C:K:p:u:r:v:V:U:D:")) != EOF)
 	switch (c) {
 	    case 'h':
 		fprintf(stderr, "Symbion SSL proxy " VERSION "\n"
 			"usage: %.256s [-d] [-f] [-l] [-i] [-s <listen address>] [-c <client address>]\n"
 			"              [-m <max connection>] [-C <certificate file>] [-K <key file>]\n"
-			"              [-u <user/uid>] [-r <chroot dir>]\n"
+			"              [-p <cipher list>] [-u <user/uid>] [-r <chroot dir>]\n"
 			"              [-v <trusted CA file>] [-V <trusted CA dir>]\n"
 			"              [-U <upward buffer (default 2048)>] [-D <downward buffer (default 8192)>]\n"
 			"        <lister address> = [<host>:]<port>\n"
@@ -453,6 +454,9 @@ int main(int argc, char **argv)
 		break;
 	    case 'K':
 		key_file=optarg;
+		break;
+	    case 'p':
+		cipher_list=optarg;
 		break;
 	    case 'u':
 		set_uid=optarg;
