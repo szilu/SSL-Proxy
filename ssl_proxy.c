@@ -53,6 +53,7 @@ int debug_flag=0;
 int fg_flag=0;
 int info_flag=0;
 int log_flag=0;
+int conn_timeout=0;
 int max_conn=MAX_CONNECTION;
 int cs_buflen=CS_BUFFER_LEN, sc_buflen=SC_BUFFER_LEN;
 char *server_addr="0.0.0.0";
@@ -79,6 +80,7 @@ int client_sa_len;
 typedef enum {cs_disconnected, cs_accept, cs_connecting, cs_connected, cs_closing} ConnStatus;
 typedef struct {
     ConnStatus stat;			// Status of the connection
+    time_t event_t;			// Last event
     int server_sock;			// Server side socket id
     struct sockaddr_in server_sa;	// Server's socket address
     int server_sa_len;			// ^^^^^^^^^^^^^^^^^^^^^^^'s len
@@ -394,7 +396,7 @@ int main(int argc, char **argv)
     int c, pid, i;
     char *p1, *p2;
 
-    while ((c=getopt(argc, argv, "hdfilm:s:c:C:K:p:u:r:v:V:U:D:")) != EOF)
+    while ((c=getopt(argc, argv, "hdfilm:s:c:C:K:p:u:r:v:V:t:U:D:")) != EOF)
 	switch (c) {
 	    case 'h':
 		fprintf(stderr, "Symbion SSL proxy " VERSION "\n"
@@ -402,6 +404,7 @@ int main(int argc, char **argv)
 			"              [-m <max connection>] [-C <certificate file>] [-K <key file>]\n"
 			"              [-p <cipher list>] [-u <user/uid>] [-r <chroot dir>]\n"
 			"              [-v <trusted CA file>] [-V <trusted CA dir>]\n"
+			"              [-t <timeout (sec)>]\n"
 			"              [-U <upward buffer (default 2048)>] [-D <downward buffer (default 8192)>]\n"
 			"        <lister address> = [<host>:]<port>\n"
 			"        <client address> = [<host>:]<port> | unix:<path>\n", argv[0]);
@@ -470,6 +473,9 @@ int main(int argc, char **argv)
 	    case 'V':
 		verify_ca_dir=optarg;
 		break;
+	    case 't':
+		conn_timeout=atoi(optarg);
+		break;
 	    case 'U':
 		cs_buflen=atoi(optarg);
 		break;
@@ -533,15 +539,16 @@ int main(int argc, char **argv)
 		client_addr);
 
     while (1) {
-	int event=0, ci;
+	int eventsum=0, ci;
 	// Check for incoming connections
 	if ((i=conn_accept())>0) {
 	    debug("Client connected");
-	    event=1;
+	    eventsum=1;
 	}
 	for (ci=0; ci<max_conn; ci++) {
 	    Conn *cn=&conn[ci];
-	    int l;
+	    int event=0, l;
+	    time_t tm;
 	    switch (cn->stat) {
 		case cs_accept:
 		    i=conn_ssl_accept(cn);
@@ -655,9 +662,18 @@ int main(int argc, char **argv)
 		    }
 		}
 		if (cn->stat==cs_closing && cn->scbuf_e==cn->scbuf_b) conn_close_server(cn);
+		tm=time(NULL);
+		if (event) {
+		    cn->event_t=tm;
+		}
+		if (conn_timeout && cn->stat!=cs_disconnected && tm-cn->event_t>conn_timeout) {
+		    cn->stat=cs_closing; event=1;
+		    plog(LOG_ERR, "TIMEOUT @%d", conn->server_sock);
+		}
 	    }
+	    eventsum+=event;
 	}
-	if (!event) _sleep();
+	if (!eventsum) _sleep();
     }
     return 0;
 }
