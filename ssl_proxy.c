@@ -20,8 +20,8 @@
 #define MAX_CONNECTION 32
 //#define CS_BUFFER_LEN 2
 //#define SC_BUFFER_LEN 40
-#define CS_BUFFER_LEN 2048
-#define SC_BUFFER_LEN 8192
+#define CS_BUFFER_LEN 8192
+#define SC_BUFFER_LEN 65536
 #define PEM_DIR "/etc/symbion"
 #define CERT_FILE "cert.pem"
 #define KEY_FILE "key.pem"
@@ -316,6 +316,7 @@ int conn_accept(void)
     BIO_set_nbio(SSL_get_wbio(conn[i].ssl_conn), 0);
     fcntl(conn[i].server_sock, F_SETFL, O_NONBLOCK);
     conn[i].stat=cs_accept;
+    conn[i].event_t=0;
     conn[i].scbuf_b=conn[i].scbuf; conn[i].scbuf_e=conn[i].scbuf;
     conn[i].csbuf_b=conn[i].csbuf; conn[i].csbuf_e=conn[i].csbuf;
     return conn[i].server_sock;
@@ -666,7 +667,7 @@ int main(int argc, char **argv)
 		if (event) {
 		    cn->event_t=tm;
 		}
-		if (conn_timeout && cn->stat!=cs_disconnected && tm-cn->event_t>conn_timeout) {
+		if (conn_timeout && cn->stat!=cs_disconnected && cn->event_t && tm-cn->event_t>conn_timeout) {
 		    cn->stat=cs_closing; event=1;
 		    plog(LOG_ERR, "TIMEOUT @%d", conn->server_sock);
 		}
